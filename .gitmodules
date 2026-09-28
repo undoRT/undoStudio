@@ -7,3 +7,19 @@
 [submodule "third_party/implot"]
 	path = third_party/implot
 	url = https://github.com/epezent/implot.git
+[submodule "third_party/stb"]
+	path = third_party/stb
+	url = https://github.com/nothings/stb.git
+[submodule "third_party/tinyfiledialogs"]
+	path = third_party/tinyfiledialogs
+	url = https://github.com/native-toolkit/libtinyfiledialogs.git
+[submodule "third_party/ImGuiColorTextEdit"]
+	path = third_party/ImGuiColorTextEdit
+	url = https://github.com/undoRT/ImGuiColorTextEdit.git
+	branch = undo-semantic-tokens
+[submodule "third_party/st2cpp"]
+	path = third_party/st2cpp
+	url = https://github.com/undoRT/st2cpp.git
+[submodule "third_party/nlohmann_json"]
+	path = third_party/nlohmann_json
+	url = https://github.com/nlohmann/json.git
