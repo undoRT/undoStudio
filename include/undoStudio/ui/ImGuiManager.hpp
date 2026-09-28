@@ -166,6 +166,14 @@ public:
    void loadLayout(const std::string& filename = "undoStudio_layout.ini");
 
    /**
+    * @brief Copy the layout shipped in resources/ into place when there is none
+    *
+    * A fresh install opens on the arrangement the project ships rather than on the
+    * one createDefaultLayout() builds, so the two cannot drift apart.
+    */
+   void adoptShippedLayout();
+
+   /**
     * @brief Get the ImGui IO structure
     * @return Reference to ImGuiIO
     */

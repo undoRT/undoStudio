@@ -68,8 +68,12 @@ progress.marks
 # ImGui state written at runtime rather than configured by hand: imgui.ini is
 # Dear ImGui's own window/menu state, undoStudio_layout.ini is the dock layout
 # the user has arranged and should be able to throw away and rebuild.
+#
+# The one under resources/ is not state: it is the layout the project ships, and a
+# fresh install is opened from it.
 imgui.ini
 undoStudio_layout.ini
+!resources/undoStudio_layout.ini
 
 # st2cpp is built out-of-source under build/; a stray in-source configure of the
 # CLI leaves this behind.

@@ -184,6 +184,14 @@ void ImGuiManager::renderDockingLayout()
       bool hasSavedLayout = false;
       if (!m_layoutResetRequested) {
          hasSavedLayout = !m_iniFilename.empty() && std::ifstream(m_iniFilename).good();
+         // Nothing arranged yet: take the layout the project ships, so a fresh
+         // install opens the way it is meant to be rather than on the DockBuilder
+         // arrangement in createDefaultLayout(). An explicit reset does not, or
+         // there would be no way back from it.
+         if (!hasSavedLayout) {
+            adoptShippedLayout();
+            hasSavedLayout = !m_iniFilename.empty() && std::ifstream(m_iniFilename).good();
+         }
       }
 
       if (!hasSavedLayout) {
@@ -461,6 +469,36 @@ void ImGuiManager::saveLayout(const std::string& filename)
    // This is just a wrapper for manual saving if needed
    (void) filename;
    std::cout << "[ImGui] Layout saved to: " << m_iniFilename << std::endl;
+}
+
+/**
+ * @brief Copy the layout shipped with the project into place, if there is none yet
+ *
+ * The arrangement the project opens with is a file in resources/, not a builder
+ * call: it is the one the dock layout is saved from, so what a new user gets is
+ * what the project settled on rather than a second description of it that can
+ * drift away from the first.
+ */
+void ImGuiManager::adoptShippedLayout()
+{
+   if (m_iniFilename.empty()) {
+      return;
+   }
+   if (std::ifstream(m_iniFilename).good()) {
+      return;
+   }
+   static const char* kShipped = "resources/undoStudio_layout.ini";
+   std::ifstream source(kShipped);
+   if (!source.good()) {
+      return; // nothing to adopt, the DockBuilder arrangement will be used
+   }
+   std::ofstream target(m_iniFilename);
+   if (!target.good()) {
+      std::cerr << "[ImGui] Cannot write the shipped layout to " << m_iniFilename << std::endl;
+      return;
+   }
+   target << source.rdbuf();
+   std::cout << "[ImGui] Adopted the shipped layout: " << kShipped << " -> " << m_iniFilename << std::endl;
 }
 
 void ImGuiManager::loadLayout(const std::string& filename)
