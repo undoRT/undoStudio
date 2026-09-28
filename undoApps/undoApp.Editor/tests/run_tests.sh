@@ -32,8 +32,10 @@ PLUGIN_SRC=("$ROOT/undoApps/undoApp.Editor/src/undoAppSTSemantic.cpp"
             "$ROOT/third_party/ImGuiColorTextEdit/TextEditor.cpp")
 
 # UI tests additionally need the ImGui/ImGuiManager libraries. Those live in the
-# build tree; the plugin links them, so reuse the same artefacts.
-LIBS=("$ROOT/libimgui.a" "$ROOT/libimplot.a" "$ROOT/libundoStudioCore.so")
+# build tree; the plugin links them, so reuse the same artefacts. Both layouts
+# are looked for, since an out-of-source build puts them under build/ and an
+# in-source one leaves them in the root.
+LIBS=(libimgui.a libimplot.a libundoStudioCore.so)
 
 # Tests that only exercise the UI-free semantic layer.
 PURE=(semantic_tokens declaration_index member_access)
@@ -62,18 +64,26 @@ build_and_run() {
     # No ImGui needed.
     src=("$ROOT/undoApps/undoApp.Editor/src/undoAppSTSemantic.cpp" "$TESTS/$name.cpp")
   else
+    # Declared before the append, so the emptiness test below is about a missing
+    # library rather than about a variable that was never set.
+    link=()
     for l in "${LIBS[@]}"; do
-      [ -f "$l" ] && link+=("$l")
+      for dir in "$ROOT" "$ROOT/build"; do
+        [ -f "$dir/$l" ] && link+=("$dir/$l")
+      done
     done
     # e2e_diagnostics takes an optional file path argument.
-    if [ -z "$link" ]; then
-      echo "  SKIP  $name (build the project first: cmake -S . -B . && make)"
+    if [ ${#link[@]} -eq 0 ]; then
+      echo "  SKIP  $name (build the project first: cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build)"
       return 0
     fi
   fi
 
+  # Both the source root and build/ go into the rpath: the test binaries are run
+  # from a temporary directory, so without it the loader cannot find
+  # libundoStudioCore.so wherever the build left it.
   if ! g++ -std=c++17 -O1 "${INC[@]}" -o "$exe" "${src[@]}" "${ST2CPP_SRC[@]}" \
-        "${link[@]}" -Wl,-rpath,"$ROOT" 2>"$OUT/$name.build.log"; then
+        "${link[@]}" -Wl,-rpath,"$ROOT" -Wl,-rpath,"$ROOT/build" 2>"$OUT/$name.build.log"; then
     echo "  BUILD FAIL  $name  (see $OUT/$name.build.log)"
     return 1
   fi
