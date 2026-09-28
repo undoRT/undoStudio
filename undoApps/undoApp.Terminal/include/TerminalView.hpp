@@ -44,10 +44,19 @@ public:
     */
    void draw(TerminalSession& session, ImFont* font, float& fontSize, bool focused);
 
-   /// @brief Turn this frame's key presses into what the session should be sent
-   /// @param session Session to send to
-   /// @param focused Whether this pane holds the keyboard
-   void handleInput(TerminalSession& session, bool focused);
+   /**
+    * @brief Turn this frame's key presses into what the session should be sent
+    * @param session      Session to send to
+    * @param focused      Whether this pane holds the keyboard
+    * @param fontSize     Size of the terminal, changed by the size keys
+    * @param defaultSize  Size the reset key returns to
+    *
+    * The size keys are answered here rather than in the panel, because the ones
+    * that matter arrive as characters and not as keys: on a layout where '+' is
+    * its own key, or typed as Shift and '=', the only thing ImGui reports is the
+    * character, so a check against a key code never sees it.
+    */
+   void handleInput(TerminalSession& session, bool focused, float& fontSize, float defaultSize);
 
    /// @brief Copy the selection to the clipboard
    /// @param session Session to copy from

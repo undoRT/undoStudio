@@ -335,7 +335,7 @@ void TerminalView::draw(TerminalSession& session, ImFont* font, float& fontSize,
    session.consumeBell();
 }
 
-void TerminalView::handleInput(TerminalSession& session, bool focused)
+void TerminalView::handleInput(TerminalSession& session, bool focused, float& fontSize, float defaultSize)
 {
    if (!focused || !session.running()) {
       return;
@@ -415,6 +415,16 @@ void TerminalView::handleInput(TerminalSession& session, bool focused)
       session.sendKey(VTERM_KEY_INS, static_cast<VTermModifier>(0));
       return;
    }
+   // Ctrl with zero is the reset, as a key rather than a character, so it does not
+   // depend on the layout the way the plus and the minus do. The queue is emptied
+   // with it: a zero held with Ctrl is a printable character as well, and left
+   // there it would be sent to the shell on the next frame.
+   if (ctrl && ImGui::IsKeyPressed(ImGuiKey_0)) {
+      fontSize = defaultSize;
+      io.InputQueueCharacters.clear();
+      return;
+   }
+
    // Ctrl with a letter is the control character, not the letter.
    if (ctrl && !shift && !alt) {
       for (int key = ImGuiKey_A; key <= ImGuiKey_Z; ++key) {
@@ -423,6 +433,26 @@ void TerminalView::handleInput(TerminalSession& session, bool focused)
             if (control != 0) {
                session.sendChar(static_cast<uint32_t>(control), VTERM_MOD_NONE);
             }
+            return;
+         }
+      }
+   }
+
+   // Anything else printable arrives as a character, and that is where the plus
+   // and the minus are found. Asking for ImGuiKey_Equal instead works only where
+   // '+' is a shifted '=', and nowhere else: the key code GLFW reports for it is
+   // a property of the layout, and the character is not.
+   if (ctrl) {
+      for (int i = 0; i < io.InputQueueCharacters.Size; ++i) {
+         const ImWchar wide = io.InputQueueCharacters[i];
+         if (wide == '+' || wide == '=') {
+            fontSize += 1.0f;
+            io.InputQueueCharacters.clear();
+            return;
+         }
+         if (wide == '-') {
+            fontSize -= 1.0f;
+            io.InputQueueCharacters.clear();
             return;
          }
       }

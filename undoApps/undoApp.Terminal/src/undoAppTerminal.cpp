@@ -202,7 +202,7 @@ void TerminalApp::ensureTab()
 void TerminalApp::handleInput(Tab& tab)
 {
    if (tab.view != nullptr) {
-      tab.view->handleInput(*tab.session, ImGui::IsWindowFocused());
+      tab.view->handleInput(*tab.session, ImGui::IsWindowFocused(), m_fontSize, kDefaultFontSize);
    }
 }
 
@@ -272,34 +272,17 @@ void TerminalApp::render()
          if (tab.session != nullptr && tab.view != nullptr) {
             tab.session->pump();
 
-            // Ctrl with the plus, the minus or a zero: the same size the buttons
-            // in the tab bar set, for the hands that are already on the keyboard.
-            if (ImGui::IsWindowFocused() && ImGui::GetIO().KeyCtrl) {
-               // '=' is the key labelled + on a US layout, which is where Ctrl++
-               // is pressed. Shift is not taken as a qualifier here because a
-               // shifted '=' is a different key on other layouts and the intent
-               // is the same either way.
-               if (ImGui::IsKeyPressed(ImGuiKey_Equal)) {
-                  setFontSize(m_fontSize + 1.0f);
-               }
-               if (ImGui::IsKeyPressed(ImGuiKey_Minus)) {
-                  setFontSize(m_fontSize - 1.0f);
-               }
-               if (ImGui::IsKeyPressed(ImGuiKey_0)) {
-                  setFontSize(kDefaultFontSize);
-               }
-            }
-
-            // The view changes the size itself for Ctrl and the wheel. Whatever
-            // it settled on is clamped and written out here, so that a size set
-            // with the wheel is remembered like one set with the buttons.
+            // The view changes the size for Ctrl and the wheel, and for Ctrl with
+            // the plus, the minus or a zero. Whatever it settled on is clamped and
+            // written out here, so a size set with the keyboard is remembered like
+            // one set with the buttons, and the view needs to know nothing about
+            // preferences existing.
             const float before = m_fontSize;
             tab.view->draw(*tab.session, m_font, m_fontSize, ImGui::IsWindowFocused());
+            handleInput(tab);
             if (m_fontSize != before) {
                setFontSize(m_fontSize);
             }
-
-            handleInput(tab);
          }
       }
    }

@@ -83,7 +83,7 @@ private:
 
    void ensureTab();
    void startSession(Tab& tab);
-   void handleInput(Tab& tab);
+   void handleInput(Tab& tab);   ///< Sends this frame's keys to the active session
    void drawTabs();
    void ensureFont();
    void loadFontSize();
