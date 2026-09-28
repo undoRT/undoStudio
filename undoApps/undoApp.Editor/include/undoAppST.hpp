@@ -722,7 +722,8 @@ private:
    std::string m_newItemName;
    std::string m_newItemParent;
    std::string m_renamePath;
-   float m_splitterPos = 0.5f;
+   float m_splitterPos = 0.5f;      ///< Where the Variables and Body sections are divided
+   bool m_splitterDirty = false;     ///< It has been dragged and not yet written out
    std::string m_functionReturnType;
 
    // Method creation popup state

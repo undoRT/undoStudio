@@ -109,8 +109,16 @@ Compile reports that it cannot find the transpiler and everything else works.
 
 ## Tests
 
-The Editor's tests run headless. They build each one on its own and drive real
-ImGui frames without a window, so no GPU and no display are needed:
+Both suites run headless, so no GPU and no display are needed.
+
+The core, which needs no graphics context at all:
+
+~~~bash
+./src/core/tests/run_tests.sh
+~~~
+
+The Editor, which builds each test on its own and drives real ImGui frames
+without a window:
 
 ~~~bash
 ./undoApps/undoApp.Editor/tests/run_tests.sh
@@ -119,8 +127,28 @@ ImGui frames without a window, so no GPU and no display are needed:
 ./undoApps/undoApp.Editor/tests/run_tests.sh completion
 ~~~
 
-The suite needs `libimgui.a`, `libimplot.a` and `libundoStudioCore.so` in the
-repository root, so build the project before running it.
+The Editor's suite needs `libimgui.a`, `libimplot.a` and
+`libundoStudioCore.so` in the build tree, so build the project before running it.
+
+## What is remembered between runs
+
+The IDE writes its own state next to the layout, and each file has one owner:
+
+| File | What it holds |
+|---|---|
+| `undoStudio_layout.ini` | the dock layout, which a first run takes from `resources/` |
+| `undoStudio.ini` | the window size, and the projects opened recently |
+| `undoApp.Editor.ini` | where the Variables and Body sections are divided |
+| `undoApp.Terminal.ini` | the size the terminal is drawn at |
+
+All four are yours to edit and are not tracked. Delete any of them and that part
+of the setup goes back to its default.
+
+The recent projects are under **File > Open Recent**, or `Ctrl+R`. A project is
+not reopened on its own: the list is one click away and starting the IDE with
+somebody's project already on disk is a surprise. `Ctrl+R` is left alone while a
+code editor or the terminal has the keyboard, where the same two keys mean
+something else.
 
 ## Repository layout
 

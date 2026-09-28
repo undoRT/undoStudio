@@ -63,6 +63,48 @@ namespace fs = std::filesystem;
 namespace undoApp {
 namespace ST {
 
+namespace {
+
+/// @brief Where the ST editor keeps what it remembers between runs
+constexpr const char* kEditorSettingsFile = "undoApp.Editor.ini";
+
+/**
+ * @brief Read the splitter position
+ * @param pos Set to the stored value, or left alone when there is none
+ */
+void loadSplitterPos(float& pos)
+{
+   std::ifstream in(kEditorSettingsFile);
+   std::string line;
+   while (std::getline(in, line)) {
+      const size_t equals = line.find('=');
+      if (equals == std::string::npos || line.compare(0, 12, "splitter_pos=") != 0) {
+         continue;
+      }
+      try {
+         const float value = std::stof(line.substr(equals + 1));
+         pos = std::max(0.1f, std::min(0.9f, value));
+      } catch (const std::exception&) {
+         // A value that is not a number leaves the default where it is.
+      }
+   }
+}
+
+/// @brief Write the splitter position, once the drag is over
+/// @param pos Position to store
+void saveSplitterPos(float pos)
+{
+   std::ofstream out(kEditorSettingsFile);
+   if (!out.good()) {
+      return; // nowhere to keep it, which costs the preference and nothing else
+   }
+   out << "# undoApp.Editor preferences, written by undoStudio\n"
+       << "splitter_pos=" << pos << "\n";
+}
+
+} // namespace
+
+
 // ============================================================================
 // Project strictness -> st2cpp analyzer strictness
 //
@@ -587,6 +629,10 @@ void STApp::registerPanels()
  */
 void STApp::setupEditors()
 {
+   // The splitter is where the user left it, from the start of the run rather than
+   // from the first time they drag it.
+   loadSplitterPos(m_splitterPos);
+
    m_variablesEditor = std::make_unique<TextEditor>();
    m_bodyEditor = std::make_unique<TextEditor>();
 
@@ -3991,6 +4037,7 @@ static std::string executableDir()
    return path.substr(0, slash);
 }
 
+
 /**
  * @brief Hand the project to st2cpp and put what it says in the Output panel
  *
@@ -5477,6 +5524,13 @@ void STApp::renderSplitEditor(TextEditor& varEditor, TextEditor& bodyEditor, flo
       float newPos = splitterPos + (mouseDelta / totalEditorHeight);
       splitterPos = std::max(0.1f, std::min(0.9f, newPos));
       ImGui::ResetMouseDragDelta(0);
+      m_splitterDirty = true;
+   }
+   // Written when the drag is over rather than on every frame of it: a write per
+   // frame of a drag is a write per frame of the whole run.
+   if (m_splitterDirty && !ImGui::IsItemActive()) {
+      saveSplitterPos(splitterPos);
+      m_splitterDirty = false;
    }
 
    if (ImGui::IsItemHovered()) {

@@ -75,8 +75,11 @@ imgui.ini
 undoStudio_layout.ini
 !resources/undoStudio_layout.ini
 
-# The terminal's own preferences, next to the layout it belongs with
+# The undoApps' own preferences, each next to the layout they belong with, and
+# the core's: the window size and the projects opened recently.
 undoApp.Terminal.ini
+undoApp.Editor.ini
+undoStudio.ini
 
 # st2cpp is built out-of-source under build/; a stray in-source configure of the
 # CLI leaves this behind.
