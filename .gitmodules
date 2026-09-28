@@ -23,3 +23,6 @@
 [submodule "third_party/nlohmann_json"]
 	path = third_party/nlohmann_json
 	url = https://github.com/nlohmann/json.git
+[submodule "third_party/libvterm"]
+	path = third_party/libvterm
+	url = https://github.com/neovim/libvterm.git
