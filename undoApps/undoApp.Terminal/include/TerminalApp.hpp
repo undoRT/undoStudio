@@ -68,8 +68,15 @@ public:
 
    int tabCount() const { return static_cast<int>(m_tabs.size()); }
 
-   /// @brief Point size the terminal starts at, and where Ctrl and the wheel begin from
-   static constexpr float kFontSize = 16.0f;
+   /// @brief Point size the terminal starts at, and what Ctrl+0 returns to
+   static constexpr float kDefaultFontSize = 16.0f;
+
+   /// @brief Where the chosen size is kept between runs
+   static constexpr const char* kSettingsFile = "undoApp.Terminal.ini";
+
+   /// @brief Smallest and largest the size may be set to
+   static constexpr float kMinFontSize = 9.0f;
+   static constexpr float kMaxFontSize = 40.0f;
 
 private:
    TerminalApp() = default;
@@ -79,9 +86,13 @@ private:
    void handleInput(Tab& tab);
    void drawTabs();
    void ensureFont();
+   void loadFontSize();
+   void saveFontSize() const;
+   void setFontSize(float size);
 
    ImFont* m_font = nullptr;   ///< Monospace font, or the default when it is missing
-   float m_fontSize = kFontSize; ///< Size the terminal is drawn at, Ctrl and the wheel change it
+   float m_fontSize = kDefaultFontSize; ///< Size the terminal is drawn at
+   bool m_fontSizeLoaded = false;      ///< The saved size has been read already
 
    std::vector<Tab> m_tabs;
    int m_active = 0;

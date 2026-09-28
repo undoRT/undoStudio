@@ -20,7 +20,9 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <cstdio>
+#include <fstream>
 #include <iostream>
 
 namespace undoApp {
@@ -54,6 +56,7 @@ bool TerminalApp::initialize()
    if (m_panelRegistered) {
       return true;
    }
+   loadFontSize();
    // The font is loaded here rather than on the first frame that draws the
    // terminal: an atlas built in the middle of a frame is not on the GPU until
    // the next one, and the first thing the user would see is a grid of nothing.
@@ -105,6 +108,51 @@ void TerminalApp::ensureFont()
       // runs before the first one.
       std::cout << "[undoApp.Terminal] monospace font loaded, starting at " << m_fontSize << " px" << std::endl;
    }
+}
+
+void TerminalApp::loadFontSize()
+{
+   if (m_fontSizeLoaded) {
+      return;
+   }
+   m_fontSizeLoaded = true;
+   // The size is a preference, so it is remembered: a terminal the user has made
+   // larger should still be larger tomorrow. A missing or unreadable file is not
+   // a problem, it only means the default stands.
+   std::ifstream saved(kSettingsFile);
+   std::string line;
+   while (std::getline(saved, line)) {
+      const size_t equals = line.find('=');
+      if (equals == std::string::npos || line.compare(0, 9, "fontsize=") != 0) {
+         continue;
+      }
+      try {
+         const float size = std::stof(line.substr(equals + 1));
+         m_fontSize = std::max(kMinFontSize, std::min(kMaxFontSize, size));
+      } catch (const std::exception&) {
+         // A value that is not a number leaves the default in place.
+      }
+   }
+}
+
+void TerminalApp::saveFontSize() const
+{
+   std::ofstream out(kSettingsFile);
+   if (!out.good()) {
+      return; // nowhere to keep it, which costs the preference and nothing else
+   }
+   out << "# undoApp.Terminal preferences, written by undoStudio\n"
+       << "fontsize=" << m_fontSize << "\n";
+}
+
+void TerminalApp::setFontSize(float size)
+{
+   const float clamped = std::max(kMinFontSize, std::min(kMaxFontSize, size));
+   if (clamped == m_fontSize) {
+      return;
+   }
+   m_fontSize = clamped;
+   saveFontSize();
 }
 
 void TerminalApp::newTab()
@@ -185,6 +233,26 @@ void TerminalApp::drawTabs()
          newTab();
       }
       ImGui::EndTabBar();
+
+      // The size, in the open. Ctrl and the wheel do the same thing and neither is
+      // discoverable, and a terminal sized by a shortcut nobody can find is a
+      // terminal people stop reading.
+      ImGui::SameLine(ImGui::GetContentRegionAvail().x - 84.0f);
+      if (ImGui::SmallButton("A-")) {
+         setFontSize(m_fontSize - 1.0f);
+      }
+      if (ImGui::IsItemHovered()) {
+         ImGui::SetTooltip("Smaller text");
+      }
+      ImGui::SameLine();
+      if (ImGui::SmallButton("A+")) {
+         setFontSize(m_fontSize + 1.0f);
+      }
+      if (ImGui::IsItemHovered()) {
+         ImGui::SetTooltip("Larger text");
+      }
+      ImGui::SameLine();
+      ImGui::Text("%.0f px", m_fontSize);
    }
 }
 
@@ -203,7 +271,34 @@ void TerminalApp::render()
          startSession(tab);
          if (tab.session != nullptr && tab.view != nullptr) {
             tab.session->pump();
+
+            // Ctrl with the plus, the minus or a zero: the same size the buttons
+            // in the tab bar set, for the hands that are already on the keyboard.
+            if (ImGui::IsWindowFocused() && ImGui::GetIO().KeyCtrl) {
+               // '=' is the key labelled + on a US layout, which is where Ctrl++
+               // is pressed. Shift is not taken as a qualifier here because a
+               // shifted '=' is a different key on other layouts and the intent
+               // is the same either way.
+               if (ImGui::IsKeyPressed(ImGuiKey_Equal)) {
+                  setFontSize(m_fontSize + 1.0f);
+               }
+               if (ImGui::IsKeyPressed(ImGuiKey_Minus)) {
+                  setFontSize(m_fontSize - 1.0f);
+               }
+               if (ImGui::IsKeyPressed(ImGuiKey_0)) {
+                  setFontSize(kDefaultFontSize);
+               }
+            }
+
+            // The view changes the size itself for Ctrl and the wheel. Whatever
+            // it settled on is clamped and written out here, so that a size set
+            // with the wheel is remembered like one set with the buttons.
+            const float before = m_fontSize;
             tab.view->draw(*tab.session, m_font, m_fontSize, ImGui::IsWindowFocused());
+            if (m_fontSize != before) {
+               setFontSize(m_fontSize);
+            }
+
             handleInput(tab);
          }
       }
