@@ -1,0 +1,151 @@
+{
+    "name": "undoStudio Dark Theme",
+    "version": "1.0",
+    "colors": {
+        "window_bg": [
+            0.10,
+            0.10,
+            0.12,
+            1.00
+        ],
+        "title_bg": [
+            0.08,
+            0.08,
+            0.10,
+            1.00
+        ],
+        "title_bg_active": [
+            0.12,
+            0.12,
+            0.14,
+            1.00
+        ],
+        "menubar_bg": [
+            0.08,
+            0.08,
+            0.10,
+            1.00
+        ],
+        "frame_bg": [
+            0.16,
+            0.16,
+            0.18,
+            1.00
+        ],
+        "frame_hover": [
+            0.24,
+            0.24,
+            0.26,
+            1.00
+        ],
+        "frame_active": [
+            0.20,
+            0.22,
+            0.28,
+            1.00
+        ],
+        "text": [
+            1.00,
+            1.00,
+            1.00,
+            1.00
+        ],
+        "text_disabled": [
+            0.50,
+            0.50,
+            0.50,
+            1.00
+        ],
+        "button": [
+            0.20,
+            0.20,
+            0.22,
+            1.00
+        ],
+        "button_hover": [
+            0.30,
+            0.30,
+            0.32,
+            1.00
+        ],
+        "button_active": [
+            0.15,
+            0.15,
+            0.18,
+            1.00
+        ],
+        "header": [
+            0.15,
+            0.15,
+            0.17,
+            1.00
+        ],
+        "header_hover": [
+            0.22,
+            0.22,
+            0.24,
+            1.00
+        ],
+        "header_active": [
+            0.12,
+            0.12,
+            0.14,
+            1.00
+        ],
+        "separator": [
+            0.25,
+            0.25,
+            0.28,
+            1.00
+        ],
+        "border": [
+            0.20,
+            0.20,
+            0.22,
+            1.00
+        ],
+        "tab": [
+            0.12,
+            0.12,
+            0.14,
+            1.00
+        ],
+        "tab_hover": [
+            0.20,
+            0.20,
+            0.22,
+            1.00
+        ],
+        "tab_active": [
+            0.18,
+            0.18,
+            0.20,
+            1.00
+        ]
+    },
+    "styles": {
+        "window_rounding": 4.0,
+        "frame_rounding": 4.0,
+        "scrollbar_rounding": 4.0,
+        "grab_rounding": 4.0,
+        "tab_rounding": 4.0,
+        "window_padding": [
+            8.0,
+            8.0
+        ],
+        "frame_padding": [
+            6.0,
+            4.0
+        ],
+        "item_spacing": [
+            8.0,
+            4.0
+        ],
+        "item_inner_spacing": [
+            4.0,
+            4.0
+        ],
+        "indent_spacing": 21.0,
+        "scrollbar_size": 14.0
+    }
+}

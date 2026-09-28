@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=undoStudio
+Comment=Industrial Automation IDE
+Exec=/home/salvatore/Desktop/undoRT/undoStudio/build/undoStudio
+Icon=/home/salvatore/Desktop/undoRT/undoStudio/resources/icons/undoRT_logo.png
+Terminal=false
+Type=Application
+Categories=Development;IDE;
+StartupNotify=true
+StartupWMClass=undoStudio
