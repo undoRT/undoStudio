@@ -1,0 +1,68 @@
+📁 include/undoStudio/core/Application.hpp
+Descrizione Italiana
+Questo file definisce la classe singleton Application che rappresenta il cuore dell'applicazione undoStudio. 
+Gestisce il ciclo di vita completo dell'applicazione: inizializzazione, esecuzione del main loop, e shutdown. 
+Funge da punto di ingresso principale e fornisce accesso ai servizi dell'ecosistema attraverso un pattern 
+Service Locator. La classe è progettata per essere thread-safe e segue il pattern Singleton per garantire 
+una singola istanza globale.
+
+📁 src/core/Application.cpp
+Descrizione Italiana
+Implementazione concreta della classe Application. Gestisce l'inizializzazione dei servizi (Window, Render, 
+ImGui), configura il main loop con i relativi callback, e coordina lo shutdown ordinato dell'applicazione. 
+Il main loop processa gli eventi della finestra, aggiorna l'interfaccia utente, e gestisce il rendering. 
+La gestione degli errori è robusta con messaggi di log chiari.
+
+📁 include/undoStudio/services/WindowService.hpp
+Descrizione Italiana
+Interfaccia astratta per il servizio di gestione finestre. Definisce un contratto che qualsiasi 
+implementazione (GLFW, SDL, Win32, etc.) deve rispettare. Fornisce metodi per la creazione e gestione della 
+finestra, eventi di input (tastiera, mouse, resize), e configurazione del rendering context. 
+L'astrazione permette di cambiare backend senza modificare il resto dell'applicazione.
+
+📁 src/services/WindowServiceGLFW.cpp
+Descrizione Italiana
+Implementazione concreta del servizio finestre utilizzando GLFW come backend. Gestisce la creazione della 
+finestra OpenGL, il setup dei callback per gli eventi (resize, tastiera, mouse, scroll), e la gestione del 
+context OpenGL. Include anche la gestione di OpenGL core profile per garantire la massima compatibilità 
+cross-platform. La classe traduce i callback di GLFW in callback C++ moderni utilizzando std::function.
+
+📁 include/undoStudio/ui/ImGuiManager.hpp
+Descrizione Italiana
+Gestore dell'interfaccia utente basato su Dear ImGui. Questa classe fornisce un'astrazione per il rendering 
+dell'UI, la gestione dei pannelli, il sistema di docking, e il caricamento dei font. Permette di registrare 
+pannelli (undoApps) che vengono renderizzati automaticamente nel main loop. Supporta temi scuri/chiari e la 
+personalizzazione. Il sistema di docking permette di organizzare i pannelli come in un moderno IDE.
+
+📁 src/ui/ImGuiManager.cpp
+Descrizione Italiana
+Implementazione del gestore ImGui. Inizializza i context di ImGui e ImPlot, configura i backend GLFW/OpenGL, 
+e gestisce il ciclo di rendering. I pannelli vengono renderizzati in un layout dockable, simile a Visual 
+Studio o Qt Creator. Supporta multi-viewport per finestre flottanti e gestisce il caricamento di font 
+personalizzati. L'implementazione è robusta con gestione degli errori e logging.
+
+📁 src/main.cpp
+Descrizione Italiana
+Punto di ingresso dell'applicazione. Inizializza il core di undoStudio, registra i pannelli demo (uno per 
+la visualizzazione delle performance, uno per il debug delle risorse di sistema), e avvia il main loop. 
+Gestisce le eccezioni in modo pulito e restituisce codici di errore appropriati. I pannelli demo mostrano 
+come utilizzare ImGui e ImPlot per creare dashboard di diagnostica in tempo reale.
+
+📁 CMakeLists.txt
+Descrizione Italiana
+File di configurazione CMake per il progetto. Definisce gli standard C++17, include le librerie necessarie 
+(GLFW, ImGui, ImPlot), e gestisce le dipendenze specifiche per piattaforma (OpenGL su Linux, DirectX su 
+Windows). Supporta la compilazione dell'applicazione principale e dell'undoApp demo come modulo separato. 
+La configurazione è modulare e facilmente estendibile per aggiungere nuove undoApp.
+
+📁 undoApps/undoApp.Demo/include/DemoApp.hpp
+Descrizione Italiana
+Header dell'undoApp demo. Mostra come estendere undoStudio con funzionalità personalizzate. L'undoApp 
+registra i propri pannelli nel sistema di ImGuiManager e può accedere ai servizi core. Questa struttura 
+sarà usata da tutte le undoApp future.
+
+📁 risorse aggiuntive: resources/themes/dark.theme.json
+Descrizione Italiana
+File di configurazione del tema scuro per undoStudio. Definisce i colori e gli stili dell'interfaccia 
+utente. Può essere caricato dinamicamente per personalizzare l'aspetto dell'IDE. Questo è un esempio del 
+formato JSON che verrà utilizzato per il sistema di temi.
