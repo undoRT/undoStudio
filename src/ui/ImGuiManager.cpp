@@ -330,15 +330,12 @@ void ImGuiManager::renderMenuBar()
       // would break the program the user is in.
       ImGuiIO& io = ImGui::GetIO();
       if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_R) && !io.WantTextInput) {
-         m_showRecentsPopup = true;
+         openRecentProjects();
       }
 
       if (ImGui::BeginMenu("File")) {
          if (ImGui::MenuItem("Open Recent")) {
-            m_showRecentsPopup = true;
-            // The menu has just been submitted, so it is still closing itself and
-            // a popup opened now would be closed with it.
-            ImGui::CloseCurrentPopup();
+            openRecentProjects();
          }
          ImGui::EndMenu();
       }
@@ -528,6 +525,16 @@ void ImGuiManager::adoptShippedLayout()
    std::cout << "[ImGui] Adopted the shipped layout: " << kShipped << " -> " << m_iniFilename << std::endl;
 }
 
+void ImGuiManager::openRecentProjects()
+{
+   // OpenPopup is what puts the list on ImGui's stack of open popups. Setting a
+   // flag and drawing it is not enough: BeginPopup looks at that stack and, not
+   // finding itself on it, returns false without opening anything, which leaves
+   // the matching EndPopup closing a popup that was never there.
+   m_showRecentsPopup = true;
+   ImGui::OpenPopup(kRecentProjectsPopup);
+}
+
 void ImGuiManager::renderRecentProjects()
 {
    auto& pm = core::ProjectManager::getInstance();
@@ -539,14 +546,12 @@ void ImGuiManager::renderRecentProjects()
    }
    m_pendingForgetProject.clear();
 
-   const bool open = ImGui::BeginPopup("##recentProjects", ImGuiWindowFlags_NoSavedSettings);
+   // Given the keyboard on the frame it opens, so the list can be walked with the
+   // arrows and chosen with Enter without a mouse. It has to be asked for before
+   // the Begin, not after: what is set here is read by the window that follows.
+   ImGui::SetNextWindowFocus();
+   const bool open = ImGui::BeginPopup(kRecentProjectsPopup, ImGuiWindowFlags_NoSavedSettings);
    if (open) {
-      // Given the keyboard on the frame it opens, so the list can be walked with
-      // the arrows and chosen with Enter without a mouse.
-      if (ImGui::IsWindowAppearing()) {
-         ImGui::SetNextWindowFocus();
-      }
-
       if (recent.empty()) {
          ImGui::TextDisabled("No project has been opened yet.");
       } else {
@@ -569,12 +574,14 @@ void ImGuiManager::renderRecentProjects()
          }
       }
    }
+   if (open) {
+      ImGui::EndPopup();
+   }
    if (!open) {
       // Esc or a click elsewhere. ImGui closes the popup, and the flag has to
       // follow it or the next frame opens a new one.
       m_showRecentsPopup = false;
    }
-   ImGui::EndPopup();
 
    // The project is not opened here. The workspace that shows its tree belongs to
    // an undoApp, and it is the one that has to rebuild that tree, so the pick

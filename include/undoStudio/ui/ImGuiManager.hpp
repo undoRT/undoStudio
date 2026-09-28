@@ -165,6 +165,12 @@ public:
     */
    void loadLayout(const std::string& filename = "undoStudio_layout.ini");
 
+   /// @brief Name of the recent projects popup, shared by the ask and the draw
+   static constexpr const char* kRecentProjectsPopup = "##recentProjects";
+
+   /// @brief Ask for the recent projects list to be shown on the next frame
+   void openRecentProjects();
+
    /// @brief Draw the recent projects list, and set a request when one is picked
    void renderRecentProjects();
 
