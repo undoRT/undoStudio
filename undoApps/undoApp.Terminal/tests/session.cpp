@@ -119,6 +119,24 @@ int main() {
     }
   }
 
+  // --- a cell the emulator never wrote is empty, in the default colours ---
+  //
+  // The emulator only stores the cells it has written to, and asking it for one it
+  // has not leaves the cell untouched. A viewer that starts from a zeroed cell
+  // gets a background of pure black there, which is a different colour from the
+  // terminal's and so gets painted: one black block at the end of every line.
+  {
+    const TerminalSession& constSession = session;
+    size_t opaque = 0;
+    for (const CellLine& line : constSession.viewport()) {
+      for (const Cell& cell : line) {
+        if (cell.text.empty() && cell.bg != terminalPalette().background) ++opaque;
+      }
+    }
+    check(opaque == 0, "no cell the emulator did not write carries a colour of its own, got " +
+                           std::to_string(opaque));
+  }
+
   // --- the cursor sits where the shell left it ---
   const VTermPos cursor = session.cursor();
   check(cursor.row >= 0 && cursor.row < 24 && cursor.col >= 0 && cursor.col < 80,

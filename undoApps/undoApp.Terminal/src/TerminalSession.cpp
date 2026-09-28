@@ -87,6 +87,26 @@ uint32_t firstCodepoint(const std::string& text)
 }
 
 /**
+ * @brief A cell the emulator has nothing to say about
+ *
+ * The emulator only stores the cells it has written to. Asking for one it never
+ * wrote leaves the caller's cell untouched, and a caller that starts from a
+ * zeroed one gets a background of pure black, which is a different colour from
+ * the terminal's and so gets painted: one black block at the end of every line.
+ * An empty cell has to be built explicitly, in the default colours.
+ *
+ * @return A cell with no text, in the palette's own foreground and background
+ */
+Cell blankCell()
+{
+   const Palette& palette = terminalPalette();
+   Cell cell;
+   cell.fg = palette.foreground;
+   cell.bg = palette.background;
+   return cell;
+}
+
+/**
  * @brief Copy an emulator cell into ours, in the colours the emulator resolved
  * @param source The emulator's cell
  * @param screen Screen the colour is resolved against
@@ -104,16 +124,17 @@ Cell toCell(const VTermScreenCell& source, VTermScreen* screen)
    // chars[] is a run of code points, most often one. A blank cell and the tail
    // of a double-width glyph both come back with a zero first code point, and
    // both are drawn as nothing.
-   if (source.chars[0] == 0) {
-      return cell;
-   }
-   appendUtf8(cell.text, source.chars[0]);
-   for (int i = 1; i < VTERM_MAX_CHARS_PER_CELL && source.chars[i] != 0; ++i) {
-      appendUtf8(cell.text, source.chars[i]);
+   if (source.chars[0] != 0) {
+      appendUtf8(cell.text, source.chars[0]);
+      for (int i = 1; i < VTERM_MAX_CHARS_PER_CELL && source.chars[i] != 0; ++i) {
+         appendUtf8(cell.text, source.chars[i]);
+      }
    }
 
-   // The emulator knows whether this is a palette index or a default, and
-   // converting is what turns it into the RGB to paint.
+   // The colours are resolved even for a cell with no text in it. A cell is the
+   // overwhelming majority of a terminal, and returning early for the empty ones
+   // left them at zero, which is black and not the terminal's background: one
+   // painted block at the end of every line.
    VTermColor fg = source.fg;
    VTermColor bg = source.bg;
    vterm_screen_convert_color_to_rgb(screen, &fg);
@@ -603,9 +624,9 @@ void TerminalSession::rebuildViewport()
          pos.row = row;
          pos.col = col;
          VTermScreenCell cell;
-         if (vterm_screen_get_cell(m_screen, pos, &cell) > 0) {
-            line[static_cast<size_t>(col)] = toCell(cell, m_screen);
-         }
+         line[static_cast<size_t>(col)] = (vterm_screen_get_cell(m_screen, pos, &cell) > 0)
+                                              ? toCell(cell, m_screen)
+                                              : blankCell();
       }
       m_viewport.push_back(std::move(line));
    }
