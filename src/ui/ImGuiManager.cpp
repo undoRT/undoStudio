@@ -10,6 +10,7 @@
  */
 
 #include "undoStudio/ui/ImGuiManager.hpp"
+#include "undoStudio/core/ProjectManager.hpp"
 #include "undoStudio/services/WindowService.hpp"
 #include "version.hpp"
 
@@ -23,10 +24,13 @@
 #include <stb_image.h>
 #include <iostream>
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 
 namespace undoStudio {
 namespace ui {
+
+namespace fs = std::filesystem;
 
 // ============================================================================
 // Singleton Instance
@@ -320,6 +324,29 @@ void ImGuiManager::renderMenuBar()
          ImGui::SameLine(0.0f, 20.0f); // spaziatura dopo il logo
       }
 
+      // Ctrl and R: the recent projects, the way an editor is expected to. Held
+      // off while anything owns the keyboard, because inside a code editor or a
+      // terminal the same two keys mean something else entirely, and stealing them
+      // would break the program the user is in.
+      ImGuiIO& io = ImGui::GetIO();
+      if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_R) && !io.WantTextInput) {
+         m_showRecentsPopup = true;
+      }
+
+      if (ImGui::BeginMenu("File")) {
+         if (ImGui::MenuItem("Open Recent")) {
+            m_showRecentsPopup = true;
+            // The menu has just been submitted, so it is still closing itself and
+            // a popup opened now would be closed with it.
+            ImGui::CloseCurrentPopup();
+         }
+         ImGui::EndMenu();
+      }
+
+      if (m_showRecentsPopup) {
+         renderRecentProjects();
+      }
+
       // Menu
       if (ImGui::BeginMenu("View")) {
          if (ImGui::MenuItem("Reset Layout")) {
@@ -499,6 +526,75 @@ void ImGuiManager::adoptShippedLayout()
    }
    target << source.rdbuf();
    std::cout << "[ImGui] Adopted the shipped layout: " << kShipped << " -> " << m_iniFilename << std::endl;
+}
+
+void ImGuiManager::renderRecentProjects()
+{
+   auto& pm = core::ProjectManager::getInstance();
+   const std::vector<std::string>& recent = pm.recentProjects();
+
+   if (m_pendingForgetProject.empty()) {
+      ImGui::SetNextWindowPos(ImVec2(200.0f, 80.0f), ImGuiCond_Appearing);
+      ImGui::SetNextWindowSize(ImVec2(520.0f, 0.0f), ImGuiCond_Appearing);
+   }
+   m_pendingForgetProject.clear();
+
+   const bool open = ImGui::BeginPopup("##recentProjects", ImGuiWindowFlags_NoSavedSettings);
+   if (open) {
+      // Given the keyboard on the frame it opens, so the list can be walked with
+      // the arrows and chosen with Enter without a mouse.
+      if (ImGui::IsWindowAppearing()) {
+         ImGui::SetNextWindowFocus();
+      }
+
+      if (recent.empty()) {
+         ImGui::TextDisabled("No project has been opened yet.");
+      } else {
+         for (const std::string& path : recent) {
+            const std::string name = fs::path(path).filename().string();
+            if (ImGui::Selectable(name.c_str())) {
+               m_pendingOpenProject = path;
+               m_showRecentsPopup = false;
+               ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::IsItemHovered()) {
+               ImGui::SetTooltip("%s", path.c_str());
+            }
+         }
+         ImGui::Separator();
+         if (ImGui::MenuItem("Clear the list")) {
+            pm.clearRecentProjects();
+            m_showRecentsPopup = false;
+            ImGui::CloseCurrentPopup();
+         }
+      }
+   }
+   if (!open) {
+      // Esc or a click elsewhere. ImGui closes the popup, and the flag has to
+      // follow it or the next frame opens a new one.
+      m_showRecentsPopup = false;
+   }
+   ImGui::EndPopup();
+
+   // The project is not opened here. The workspace that shows its tree belongs to
+   // an undoApp, and it is the one that has to rebuild that tree, so the pick
+   // leaves a request behind for it. A path that is no longer on disk says so
+   // rather than leaving a click that appears to do nothing.
+   if (!m_pendingOpenProject.empty()) {
+      if (!fs::exists(m_pendingOpenProject)) {
+         std::cerr << "[ImGui] No such project: " << m_pendingOpenProject << std::endl;
+      }
+   }
+}
+
+const std::string* ImGuiManager::consumeOpenProjectRequest(std::string& projectPath)
+{
+   if (m_pendingOpenProject.empty()) {
+      return nullptr;
+   }
+   projectPath = m_pendingOpenProject;
+   m_pendingOpenProject.clear();
+   return &projectPath;
 }
 
 void ImGuiManager::loadLayout(const std::string& filename)

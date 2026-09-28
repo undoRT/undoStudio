@@ -165,6 +165,22 @@ public:
     */
    void loadLayout(const std::string& filename = "undoStudio_layout.ini");
 
+   /// @brief Draw the recent projects list, and set a request when one is picked
+   void renderRecentProjects();
+
+   /**
+    * @brief Take the project a menu asked to open, if one was asked for
+    *
+    * The menu bar is the core and the workspace that opens a project belongs to an
+    * undoApp, so the request crosses as a flag rather than as a call: one click
+    * leaves it, and the undoApp that owns the tree takes it on its next frame. The
+    * same shape the add-METHOD dialog uses.
+    *
+    * @param projectPath Set when a project is wanted
+    * @return The path, or nullptr when nothing was asked for
+    */
+   const std::string* consumeOpenProjectRequest(std::string& projectPath);
+
    /**
     * @brief Copy the layout shipped in resources/ into place when there is none
     *
@@ -229,6 +245,9 @@ private:
    std::string m_iniFilename = "undoStudio_layout.ini"; ///< Persistent storage for ImGuiIO::IniFilename
    ImTextureID m_logoTexture = 0;
    bool m_showAboutPopup = false; ///< True once Help > About undoStudio was asked for
+   bool m_showRecentsPopup = false; ///< True while the recent projects list is open
+   std::string m_pendingOpenProject;   ///< Set by the menu, taken by the undoApp
+   std::string m_pendingForgetProject; ///< Set by the list's remove button
 };
 
 } // namespace ui

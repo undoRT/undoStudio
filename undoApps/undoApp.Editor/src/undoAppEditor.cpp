@@ -530,8 +530,19 @@ void EditorApp::createNewGenericFile(const std::string& parentPath, const std::s
 void EditorApp::renderWorkspacePanel()
 {
    auto& pm = undoStudio::core::ProjectManager::getInstance();
+   auto& imguiManager = undoStudio::ui::ImGuiManager::getInstance();
 
    if (ImGui::Begin("Workspace")) {
+      // A project picked from the menu bar's recent list, or with Ctrl+R. The menu
+      // is the core and this workspace is the undoApp that has to rebuild its
+      // tree, so the pick arrives as a request rather than as a call.
+      {
+         std::string requested;
+         if (const std::string* path = imguiManager.consumeOpenProjectRequest(requested)) {
+            openProject(*path);
+         }
+      }
+
       // -----------------------------------------------------------------------
       // Top toolbar
       // -----------------------------------------------------------------------
