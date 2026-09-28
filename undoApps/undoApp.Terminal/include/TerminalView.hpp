@@ -32,14 +32,17 @@ class TerminalView
 public:
    /**
     * @brief Draw the session inside the current ImGui window
-    * @param session Session to draw
-    * @param font    Monospace font to draw with
-    * @param focused Whether this pane holds the keyboard
+    * @param session  Session to draw
+    * @param font     Monospace font to draw with
+    * @param fontSize Size to draw it at, adjusted by Ctrl and the wheel
+    * @param focused  Whether this pane holds the keyboard
     *
     * The pane sizes the session to the space it was given, so a resize here is a
-    * real terminal resize as far as the shell is concerned.
+    * real terminal resize as far as the shell is concerned. A larger font makes
+    * the cells larger and the session smaller: the grid cannot overlap, because
+    * every glyph is drawn inside a cell measured from that same font and size.
     */
-   void draw(TerminalSession& session, ImFont* font, bool focused);
+   void draw(TerminalSession& session, ImFont* font, float& fontSize, bool focused);
 
    /// @brief Turn this frame's key presses into what the session should be sent
    /// @param session Session to send to
@@ -59,6 +62,7 @@ public:
 
 private:
    void clampSelection();
+   void zoom(float& fontSize, float notches) const;
    int rowAt(float y) const;
    int colAt(float x) const;
 

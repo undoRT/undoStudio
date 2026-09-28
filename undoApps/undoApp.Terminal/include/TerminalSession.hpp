@@ -34,6 +34,27 @@ namespace undoApp {
 namespace Terminal {
 
 /**
+ * @brief The colours the session is drawn in
+ *
+ * The emulator's own palette is xterm's, and its blue is a dark navy that
+ * disappears on a dark background. These are the sixteen ANSI colours picked for
+ * this background instead, with the blue light enough to read and the greys not
+ * so far apart that ordinary output looks like an error.
+ */
+struct Palette
+{
+   uint32_t background; ///< Behind the text
+   uint32_t foreground; ///< The text, when the program asked for no colour
+   uint32_t ansi[16];    ///< The sixteen, in the order a program indexes them
+};
+
+/**
+ * @brief The palette this session uses
+ * @return The colours, as 0xRRGGBB
+ */
+const Palette& terminalPalette();
+
+/**
  * @brief One cell of the screen, as far as drawing is concerned
  */
 struct Cell

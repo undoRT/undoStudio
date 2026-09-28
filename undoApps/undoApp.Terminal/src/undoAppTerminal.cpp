@@ -31,9 +31,6 @@ namespace {
 /// @brief Name the panel is registered under
 constexpr const char* kPanelName = "undoApp Terminal";
 
-/// @brief Point size of the monospace font
-constexpr float kFontSize = 15.0f;
-
 /**
  * @brief The directory a new shell should start in
  * @return The open project's root, or an empty string when there is none
@@ -87,7 +84,10 @@ void TerminalApp::ensureFont()
    // A terminal needs a monospace font with the box drawing glyphs in it: drawn
    // with a proportional font, a full-screen program turns into a wall of
    // misplaced rules.
-   m_font = ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/fonts/DejaVuSansMono.ttf", kFontSize);
+   // Loaded without a size: the terminal picks the size it wants, and ImGui bakes
+   // the font at each one that is asked for. Baking it at a fixed size here would
+   // make the first size the only one available.
+   m_font = ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/fonts/DejaVuSansMono.ttf", 0.0f);
    if (m_font == nullptr) {
       // Said out loud in the pane, not only on the console: without this font the
       // grid is drawn with Roboto, which is proportional, and every column is a
@@ -103,7 +103,7 @@ void TerminalApp::ensureFont()
       // broken one, and the console is where that gets settled. The size is read
       // off the font rather than measured, since measuring needs a frame and this
       // runs before the first one.
-      std::cout << "[undoApp.Terminal] monospace font loaded at " << m_font->LegacySize << " px" << std::endl;
+      std::cout << "[undoApp.Terminal] monospace font loaded, starting at " << m_fontSize << " px" << std::endl;
    }
 }
 
@@ -203,7 +203,7 @@ void TerminalApp::render()
          startSession(tab);
          if (tab.session != nullptr && tab.view != nullptr) {
             tab.session->pump();
-            tab.view->draw(*tab.session, m_font, ImGui::IsWindowFocused());
+            tab.view->draw(*tab.session, m_font, m_fontSize, ImGui::IsWindowFocused());
             handleInput(tab);
          }
       }

@@ -92,7 +92,15 @@ void TerminalView::clampSelection()
    m_selection.endRow = std::max(0, m_selection.endRow);
 }
 
-void TerminalView::draw(TerminalSession& session, ImFont* font, bool focused)
+void TerminalView::zoom(float& fontSize, float notches) const
+{
+   // Whole pixels, and bounded at both ends: below about 10 the box drawing a
+   // full-screen program is made of stops being legible, and past about 32 the
+   // pane is three columns wide and there is nothing left to read a line in.
+   fontSize = std::max(10.0f, std::min(32.0f, fontSize + notches));
+}
+
+void TerminalView::draw(TerminalSession& session, ImFont* font, float& fontSize, bool focused)
 {
    ImGuiIO& io = ImGui::GetIO();
    const ImVec2 available = ImGui::GetContentRegionAvail();
@@ -113,8 +121,14 @@ void TerminalView::draw(TerminalSession& session, ImFont* font, bool focused)
    // another: ImGui 1.92 scales the font handed to AddText by the size passed
    // beside it, so a cell measured at 15 and drawn at 20 puts every glyph a third
    // wider than the space it has.
+   // Ctrl and the wheel change the size, and ImGui bakes the font at whatever
+   // size is asked for, so nothing has to be rebuilt for it.
+   if (io.KeyCtrl && io.MouseWheel != 0.0f) {
+      zoom(fontSize, io.MouseWheel);
+   }
+
    if (font != nullptr) {
-      ImGui::PushFont(font);
+      ImGui::PushFont(font, fontSize);
    }
    m_cellWidth = ImGui::CalcTextSize("M").x;
    m_cellHeight = ImGui::GetTextLineHeight();
@@ -137,12 +151,13 @@ void TerminalView::draw(TerminalSession& session, ImFont* font, bool focused)
 
    ImDrawList* drawList = ImGui::GetWindowDrawList();
    const ImVec2 origin = ImGui::GetCursorScreenPos();
-   const ImU32 defaultBackground = toImU32(0x14161c);
+   const uint32_t backgroundColour = terminalPalette().background;
+   const ImU32 defaultBackground = toImU32(backgroundColour);
 
-   // The pane's own background, so a cell that says nothing is still the colour
-   // the theme wants.
-   drawList->AddRectFilled(origin, ImVec2(origin.x + available.x, origin.y + visibleRows * m_cellHeight),
-                           defaultBackground);
+   // The whole pane, not just the grid: the last line is rarely full, and the
+   // strip below it and the columns to its right are still the terminal's
+   // background rather than the window's, which is a different and darker colour.
+   drawList->AddRectFilled(origin, ImVec2(origin.x + available.x, origin.y + available.y), defaultBackground);
 
    // The glyph sits in the middle of its cell rather than against the top of it:
    // the line height carries leading the glyph itself does not. The size handed
@@ -177,7 +192,7 @@ void TerminalView::draw(TerminalSession& session, ImFont* font, bool focused)
          const uint32_t background = cell.reverse ? cell.fg : cell.bg;
 
          // The background of a run, in one rectangle.
-         if (background != 0x14161c) {
+         if (background != backgroundColour) {
             const float x0 = origin.x + static_cast<float>(col) * m_cellWidth;
             const float x1 = origin.x + static_cast<float>(col + span) * m_cellWidth;
             drawList->AddRectFilled(ImVec2(x0, y), ImVec2(x1, y + m_cellHeight), toImU32(background));
@@ -280,7 +295,10 @@ void TerminalView::draw(TerminalSession& session, ImFont* font, bool focused)
                           ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
 
    if (ImGui::IsItemHovered()) {
-      if (io.MouseWheel != 0.0f) {
+      // The plain wheel scrolls. With Ctrl held it is already changing the size,
+      // and scrolling as well would move the viewport out from under the text the
+      // user is resizing.
+      if (io.MouseWheel != 0.0f && !io.KeyCtrl) {
          session.scrollBy(static_cast<int>(-io.MouseWheel * kLinesPerWheel));
       }
       if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {

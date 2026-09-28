@@ -68,6 +68,9 @@ public:
 
    int tabCount() const { return static_cast<int>(m_tabs.size()); }
 
+   /// @brief Point size the terminal starts at, and where Ctrl and the wheel begin from
+   static constexpr float kFontSize = 16.0f;
+
 private:
    TerminalApp() = default;
 
@@ -78,6 +81,7 @@ private:
    void ensureFont();
 
    ImFont* m_font = nullptr;   ///< Monospace font, or the default when it is missing
+   float m_fontSize = kFontSize; ///< Size the terminal is drawn at, Ctrl and the wheel change it
 
    std::vector<Tab> m_tabs;
    int m_active = 0;

@@ -174,6 +174,34 @@ void fillWinsize(struct winsize& size, int rows, int cols)
 
 } // namespace
 
+const Palette& terminalPalette()
+{
+   static const Palette palette = {
+      0x14161c, // background
+      0xc8ccd4, // foreground
+      {
+         0x2b3038, // black          the darkest, kept off the background
+         0xe06c75, // red
+         0x98c379, // green
+         0xe5c07b, // yellow
+         0x61afef, // blue           xterm's navy is unreadable here
+         0xc678dd, // magenta
+         0x56b6c2, // cyan
+         0xdcdfe4, // white
+         0x5c6370, // bright black
+         0xff7b86, // bright red
+         0xb5e890, // bright green
+         0xf0d399, // bright yellow
+         0x7fc4ff, // bright blue
+         0xdd8ff0, // bright magenta
+         0x6fd3de, // bright cyan
+         0xffffff, // bright white
+      },
+   };
+   return palette;
+}
+
+
 // The emulator keeps the pointer to this rather than a copy, so it has to outlive
 // the session: a local in start() is dangling by the time the first byte arrives.
 const VTermScreenCallbacks TerminalSession::kCallbacks = {
@@ -244,11 +272,22 @@ bool TerminalSession::start(int rows, int cols, std::string& error)
    // dereferences an encoding that was never set up.
    vterm_state_reset(state, 1);
 
-   // Colours before anything is written, so the very first prompt is painted with
-   // the theme's own rather than the emulator's idea of black on white.
+   // The colours go in before anything is written, so the very first prompt is
+   // painted with these and not with the emulator's idea of black on white.
+   const Palette& palette = terminalPalette();
+   for (int index = 0; index < 16; ++index) {
+      VTermColor colour;
+      vterm_color_rgb(&colour, static_cast<uint8_t>(palette.ansi[index] >> 16),
+                      static_cast<uint8_t>(palette.ansi[index] >> 8), static_cast<uint8_t>(palette.ansi[index]));
+      vterm_state_set_palette_color(state, index, &colour);
+   }
    VTermColor background;
-   vterm_color_rgb(&background, 0x14, 0x16, 0x1c);
-   vterm_screen_set_default_colors(m_screen, nullptr, &background);
+   vterm_color_rgb(&background, static_cast<uint8_t>(palette.background >> 16),
+                  static_cast<uint8_t>(palette.background >> 8), static_cast<uint8_t>(palette.background));
+   VTermColor foreground;
+   vterm_color_rgb(&foreground, static_cast<uint8_t>(palette.foreground >> 16),
+                   static_cast<uint8_t>(palette.foreground >> 8), static_cast<uint8_t>(palette.foreground));
+   vterm_screen_set_default_colors(m_screen, &foreground, &background);
 
    vterm_screen_set_callbacks(m_screen, &kCallbacks, this);
    vterm_output_set_callback(m_vterm, &TerminalSession::onOutput, this);
