@@ -12,6 +12,135 @@ Each undoApp extends undoStudio with specific functionality, allowing users to i
 
 The goal is to create an open, modular and scalable automation development environment.
 
+## Requirements
+
+| | |
+|---|---|
+| OS | Linux (developed and tested on Ubuntu 24.04) |
+| Compiler | C++17, GCC 13 or Clang 15 and later |
+| CMake | 3.15 or later |
+| GPU | OpenGL 3.x, through GLFW |
+
+### System packages
+
+Debian and Ubuntu:
+
+~~~bash
+sudo apt install build-essential cmake git
+
+# OpenGL and GLU
+sudo apt install libgl1-mesa-dev libglu1-mesa-dev freeglut3-dev
+
+# X11, which is what GLFW builds against here
+sudo apt install libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev
+~~~
+
+The full list is kept in [libSetupOS.txt](libSetupOS.txt).
+
+Everything else is a submodule: GLFW, Dear ImGui, implot, ImGuiColorTextEdit,
+st2cpp, stb, tinyfiledialogs and nlohmann_json are built from source, so there is
+no library to install for them.
+
+## Build
+
+~~~bash
+git clone --recursive https://github.com/undoRT/undoStudio.git
+cd undoStudio
+~~~
+
+If the repository was cloned without `--recursive`, or a submodule was added
+later:
+
+~~~bash
+git submodule update --init --recursive
+~~~
+
+Then configure and build. An out-of-source build is the tidier choice and keeps
+the working tree free of build output:
+
+~~~bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j"$(nproc)"
+~~~
+
+The result is `build/undoStudio`, the core library `build/libundoStudioCore.so`
+and the Editor undoApp in `build/plugins/undoApp.Editor.so`.
+
+An in-source build (`cmake -B .`) also works, and is what the ignore rules in
+`.gitignore` are written for. It is not the recommended way round.
+
+### Build options
+
+| Option | Default | Effect |
+|---|---|---|
+| `BUILD_EDITOR_APP` | `ON` | Build the Editor undoApp, the ST/JSON/text/C++ environment |
+| `BUILD_DEMO_APP` | `OFF` | Build the Demo undoApp |
+| `USE_SYSTEM_GLFW` | `OFF` | Use the system GLFW instead of the bundled one |
+| `ENABLE_IMGUI_DOCKING` | `ON` | Build Dear ImGui with docking support |
+| `USE_TINYFILEDIALOGS` | `OFF` | Use tinyfiledialogs for native file dialogs |
+
+## Run
+
+Run it from the repository root:
+
+~~~bash
+./build/undoStudio
+~~~
+
+The root matters: fonts, icons and themes are opened by relative path, so from
+anywhere else the IDE comes up without them. An installed copy keeps them under
+`share/undoStudio/resources`, which is where `cmake --install` puts them.
+
+## The Structured Text transpiler
+
+The Editor hands the project to **st2cpp** when Compile is pressed. st2cpp is
+built as a submodule for the editor's own analysis, but the command-line binary
+is built separately:
+
+~~~bash
+cmake -S third_party/st2cpp -B build/st2cpp -DCMAKE_BUILD_TYPE=Release
+cmake --build build/st2cpp -j"$(nproc)"
+~~~
+
+That leaves the binary at `build/st2cpp/st2cpp`, which is where the Editor looks
+for it. If st2cpp is on the `PATH` instead, that is tried first, and the Editor
+prints the path it used in the Output panel. Nothing breaks while it is missing:
+Compile reports that it cannot find the transpiler and everything else works.
+
+## Tests
+
+The Editor's tests run headless. They build each one on its own and drive real
+ImGui frames without a window, so no GPU and no display are needed:
+
+~~~bash
+./undoApps/undoApp.Editor/tests/run_tests.sh
+
+# or a subset, by name
+./undoApps/undoApp.Editor/tests/run_tests.sh completion
+~~~
+
+The suite needs `libimgui.a`, `libimplot.a` and `libundoStudioCore.so` in the
+repository root, so build the project before running it.
+
+## Repository layout
+
+~~~bash
+undoStudio/
+|-- CMakeLists.txt            top-level build, install and CPack
+|-- include/undoStudio/       public headers of the core
+|   |-- core/                 application, plugins, projects
+|   |-- services/             window service interface
+|   `-- ui/                   ImGui framework
+|-- src/                      the same, implemented
+|-- resources/                fonts, icons, themes
+|-- undoApps/
+|   |-- undoApp.Demo/         the smallest possible undoApp
+|   `-- undoApp.Editor/       ST, JSON, text and C++ editing
+|       `-- tests/            headless tests
+|-- third_party/              submodules
+`-- build/                    out-of-source build tree
+~~~
+
 ## Architecture Philosophy
 
 Traditional automation IDEs are usually monolithic applications where every feature is tightly integrated into a single environment.
@@ -141,6 +270,12 @@ undoStudio exposes common interfaces:
 undoApps use these services without duplicating infrastructure.
 
 ## Official undoApps
+
+What the ecosystem is meant to end up with. Two of these exist today:
+**undoApp.Editor**, which is the Structured Text, JSON, text and C++ editing
+environment, and **undoApp.Demo**, which is the worked example of what an undoApp
+looks like. The rest are still to be built, and the headings below describe what
+each is for rather than what it does.
 
 ### undoApp.ST
 
