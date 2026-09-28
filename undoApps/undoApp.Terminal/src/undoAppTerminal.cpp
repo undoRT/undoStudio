@@ -197,10 +197,6 @@ void TerminalApp::render()
    // The terminal area is a child so that it can take the keyboard and the mouse
    // on its own, which is what a pane of a tabbed panel needs.
    const ImGuiChildFlags childFlags = ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding;
-   // Transparent, so the empty part of the pane is the IDE's background and the
-   // terminal is a window onto the shell rather than a black rectangle in the
-   // middle of the layout. What the program paints is still painted.
-   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
    if (ImGui::BeginChild("##terminalContent", ImVec2(0.0f, 0.0f), childFlags)) {
       if (m_active >= 0 && m_active < static_cast<int>(m_tabs.size())) {
          Tab& tab = m_tabs[static_cast<size_t>(m_active)];
@@ -213,7 +209,6 @@ void TerminalApp::render()
       }
    }
    ImGui::EndChild();
-   ImGui::PopStyleColor();
 }
 
 } // namespace Terminal

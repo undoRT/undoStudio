@@ -151,7 +151,6 @@ void TerminalView::draw(TerminalSession& session, ImFont* font, float& fontSize,
 
    ImDrawList* drawList = ImGui::GetWindowDrawList();
    const ImVec2 origin = ImGui::GetCursorScreenPos();
-   const uint32_t backgroundColour = terminalPalette().background;
 
    // The glyph sits in the middle of its cell rather than against the top of it:
    // the line height carries leading the glyph itself does not. The size handed
@@ -165,6 +164,14 @@ void TerminalView::draw(TerminalSession& session, ImFont* font, float& fontSize,
    // beside the pane, and a terminal that paints on the tab bar is not a terminal
    // anyone can read.
    const ImVec2 clipMax(origin.x + cols * m_cellWidth, origin.y + visibleRows * m_cellHeight);
+   // The empty part of the pane is painted with the IDE's own panel colour rather
+   // than left transparent. Transparent is not the same thing: behind the pane is
+   // the dock node, whose background is dark, so a transparent pane shows that
+   // instead and the end of a line is still a black bar. Reading the colour from
+   // the style means it follows the theme rather than being hardcoded.
+   const uint32_t backgroundColour = terminalPalette().background;
+   drawList->AddRectFilled(origin, ImVec2(origin.x + available.x, origin.y + available.y),
+                           ImGui::GetColorU32(ImGuiCol_WindowBg));
    drawList->PushClipRect(origin, clipMax, true);
 
    for (int row = 0; row < visibleRows; ++row) {
