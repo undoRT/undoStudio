@@ -64,9 +64,8 @@ build_and_run() {
     # No ImGui needed.
     src=("$ROOT/undoApps/undoApp.Editor/src/undoAppSTSemantic.cpp" "$TESTS/$name.cpp")
   else
-    # Declared before the append, so the emptiness test below is about a missing
-    # library rather than about a variable that was never set.
-    link=()
+    # Both build layouts are searched, since an out-of-source build leaves the
+    # libraries under build/ and an in-source one leaves them in the root.
     for l in "${LIBS[@]}"; do
       for dir in "$ROOT" "$ROOT/build"; do
         [ -f "$dir/$l" ] && link+=("$dir/$l")
