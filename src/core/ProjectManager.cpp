@@ -5,6 +5,7 @@
  */
 
 #include "undoStudio/core/ProjectManager.hpp"
+#include "undoStudio/core/Settings.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -716,8 +717,59 @@ bool ProjectManager::openProject(const std::string& projectDir)
    }
 
    std::cout << "[ProjectManager] Opened project: " << m_config.name << " @ " << m_projectPath << std::endl;
+   rememberProject(m_projectPath);
    notifyChanged();
    return true;
+}
+
+// ============================================================================
+// Recent projects
+// ============================================================================
+
+void ProjectManager::rememberProject(const std::string& projectPath)
+{
+   if (projectPath.empty()) {
+      return;
+   }
+   loadRecents();
+
+   // Newest first, and a project that was already in the list moves rather than
+   // joining: the list is ordered by when a project was last looked at, and an
+   // entry appearing twice is the thing a user notices first.
+   m_recentProjects.erase(std::remove(m_recentProjects.begin(), m_recentProjects.end(), projectPath),
+                          m_recentProjects.end());
+   m_recentProjects.insert(m_recentProjects.begin(), projectPath);
+   if (m_recentProjects.size() > kMaxRecent) {
+      m_recentProjects.resize(kMaxRecent);
+   }
+   settings::setList(settings::kCoreFile, "recent", "project", m_recentProjects);
+}
+
+void ProjectManager::forgetProject(const std::string& projectPath)
+{
+   loadRecents();
+   const size_t before = m_recentProjects.size();
+   m_recentProjects.erase(std::remove(m_recentProjects.begin(), m_recentProjects.end(), projectPath),
+                          m_recentProjects.end());
+   if (m_recentProjects.size() != before) {
+      settings::setList(settings::kCoreFile, "recent", "project", m_recentProjects);
+   }
+}
+
+void ProjectManager::clearRecentProjects()
+{
+   loadRecents();
+   m_recentProjects.clear();
+   settings::setList(settings::kCoreFile, "recent", "project", m_recentProjects);
+}
+
+void ProjectManager::loadRecents()
+{
+   if (m_recentsLoaded) {
+      return;
+   }
+   m_recentsLoaded = true;
+   m_recentProjects = settings::getList(settings::kCoreFile, "recent", "project");
 }
 
 void ProjectManager::closeProject()

@@ -188,6 +188,33 @@ public:
    /// @brief Semantic strictness declared by the open project (Strict when none is open)
    Strictness getStrictness() const { return m_config.getStrictness(); }
 
+   /**
+    * @brief The projects opened most recently, newest first
+    * @return Absolute paths, at most kMaxRecent of them
+    *
+    * Remembered so they can be offered as a list. A project is not reopened on its
+    * own: the IDE starting with somebody's project already on disk is a surprise,
+    * and a list is one click away from the same place.
+    */
+   const std::vector<std::string>& recentProjects() const { return m_recentProjects; }
+
+   /// @brief How many projects are kept in the list
+   static constexpr size_t kMaxRecent = 10;
+
+   /// @brief Put a project at the head of the list, or move it there if it was there
+   /// @param projectPath Absolute path of the project
+   void rememberProject(const std::string& projectPath);
+
+   /// @brief Take a project out of the list
+   /// @param projectPath Absolute path of the project
+   void forgetProject(const std::string& projectPath);
+
+   /// @brief Empty the list
+   void clearRecentProjects();
+
+   /// @brief Read the list from the state file, once
+   void loadRecents();
+
    // --------------------------------------------------------------------------
    // PLC management
    // --------------------------------------------------------------------------
@@ -292,6 +319,8 @@ private:
    ProjectConfig m_config;
    std::vector<PLCConfig> m_plcs;
    std::vector<TaskConfig> m_tasks;
+   std::vector<std::string> m_recentProjects; ///< Opened projects, newest first
+   bool m_recentsLoaded = false;
    std::map<std::string, std::vector<std::string>> m_exports;
    OnProjectChanged m_onChanged;
 };

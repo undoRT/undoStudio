@@ -18,6 +18,7 @@
 // #include "undoStudio/services/RenderService.hpp"
 #include "undoStudio/ui/ImGuiManager.hpp"
 #include "undoStudio/core/PluginManager.hpp"
+#include "undoStudio/core/Settings.hpp"
 
 #include <iostream>
 #include <memory>
@@ -55,8 +56,12 @@ bool Application::initialize(int argc, char** argv)
       auto& windowService = services::WindowService::getInstance();
       services::WindowConfig config;
       config.title = "undoStudio - Industrial Automation IDE";
-      config.width = 1280;
-      config.height = 720;
+      // The size is the one from the last run, or the one in the struct when there
+      // is no last run. A window the user has sized to their screen should not be
+      // dragged back to a default every morning, and the fallback for a first run
+      // is the same constant it always was.
+      config.width = core::settings::getInt(core::settings::kCoreFile, "window", "width", config.width);
+      config.height = core::settings::getInt(core::settings::kCoreFile, "window", "height", config.height);
       config.fullscreen = false;
       config.vsync = true;
 
@@ -130,8 +135,16 @@ void Application::shutdown()
       auto& imguiManager = ui::ImGuiManager::getInstance();
       imguiManager.shutdown();
 
-      // Shutdown window service
+      // The window's size is written on the way out, after the plugins are gone
+      // and before the window goes: it is the last moment at which the size the
+      // user left it at can still be read.
       auto& windowService = services::WindowService::getInstance();
+      const glm::ivec2 size = windowService.getWindowSize();
+      if (size.x > 0 && size.y > 0) {
+         core::settings::setInt(core::settings::kCoreFile, "window", "width", size.x);
+         core::settings::setInt(core::settings::kCoreFile, "window", "height", size.y);
+      }
+
       windowService.shutdown();
 
       m_isRunning = false;
