@@ -89,9 +89,16 @@ bool Application::initialize(int argc, char** argv)
       // Load undoApp plugins (shared libraries). Each plugin registers its
       // own panels during createUndoApp(), so this must happen after ImGui
       // is initialized but can happen any time before the main loop starts.
+      //
+      // The IDE is started from the repository root, where the resources are, so
+      // an out-of-source build has put the plugins one level down. Both are tried
+      // and the second only when the first has nothing: an in-source build has
+      // plugins/ at the root and build/ is not where anything else lives.
       std::cout << "[undoStudio] Loading plugins..." << std::endl;
       auto& pluginManager = PluginManager::getInstance();
-      pluginManager.loadPluginsFromDirectory("plugins");
+      if (pluginManager.loadPluginsFromDirectory("plugins") == 0) {
+         pluginManager.loadPluginsFromDirectory("build/plugins");
+      }
       registerService(&pluginManager);
 
       // Setup close callback
