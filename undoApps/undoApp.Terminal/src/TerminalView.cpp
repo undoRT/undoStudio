@@ -152,12 +152,6 @@ void TerminalView::draw(TerminalSession& session, ImFont* font, float& fontSize,
    ImDrawList* drawList = ImGui::GetWindowDrawList();
    const ImVec2 origin = ImGui::GetCursorScreenPos();
    const uint32_t backgroundColour = terminalPalette().background;
-   const ImU32 defaultBackground = toImU32(backgroundColour);
-
-   // The whole pane, not just the grid: the last line is rarely full, and the
-   // strip below it and the columns to its right are still the terminal's
-   // background rather than the window's, which is a different and darker colour.
-   drawList->AddRectFilled(origin, ImVec2(origin.x + available.x, origin.y + available.y), defaultBackground);
 
    // The glyph sits in the middle of its cell rather than against the top of it:
    // the line height carries leading the glyph itself does not. The size handed
@@ -191,7 +185,9 @@ void TerminalView::draw(TerminalSession& session, ImFont* font, float& fontSize,
          const uint32_t foreground = cell.reverse ? cell.bg : cell.fg;
          const uint32_t background = cell.reverse ? cell.fg : cell.bg;
 
-         // The background of a run, in one rectangle.
+         // Only the cells the program painted get a background. The rest is left
+         // to the pane behind, so the end of a line is the IDE's own background
+         // rather than a bar of a colour the eye reads as part of the text.
          if (background != backgroundColour) {
             const float x0 = origin.x + static_cast<float>(col) * m_cellWidth;
             const float x1 = origin.x + static_cast<float>(col + span) * m_cellWidth;
