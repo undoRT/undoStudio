@@ -296,18 +296,6 @@ MemberAccessPoint memberAccessPointAt(const std::string& line, int cursorCol);
 std::string describeMember(const Suggestion& member);
 
 /**
- * @brief The names visible from where the caret is, for plain identifier completion
- * @param symTab  Symbol table of the analysis
- * @param scopeId Scope the caret is in, so a method local shadows a POU variable
- * @return Parameters, variables, constants and methods of the enclosing scopes,
- *         then the declarations and library names visible from outside
- *
- * Ordered the way a reader scans: the innermost scope first and, inside a scope,
- * declaration order. A name declared in more than one place appears once, as the
- * innermost declaration, which is the one that wins in the source. The POU being
- * edited is left out: completing its own name inside itself is noise.
- */
-/**
  * @brief The names visible from a scope, for completing a plain identifier
  * @param symTab            Symbol table of the file being edited
  * @param scopeId           Scope the caret is in
@@ -316,7 +304,9 @@ std::string describeMember(const Suggestion& member);
  * A name is offered when the source could resolve it from where the caret is: the
  * scopes from that point outwards, plus the library side. The block's own methods
  * are part of that only in its own body, since a method reaches its siblings
- * through an instance rather than by name.
+ * through an instance rather than by name. Inside a scope the order is declaration
+ * order, and a name declared in more than one place appears once, as the innermost
+ * declaration, which is the one that wins in the source.
  */
 MemberList collectScopeNames(const st2cpp::semantic::SymbolTable& symTab,
                             st2cpp::semantic::ScopeId scopeId,

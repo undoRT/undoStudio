@@ -2410,7 +2410,7 @@ void STApp::renderMemberCompletion()
    const int visible = std::min(count, kCompletionMaxRows);
    m_completionPageSize = std::max(1, visible - 1);
 
-   // Follow the highlight, then keep the window inside the list.
+   // Follow the highlight, then keep the window within the list.
    if (m_completionSelected < m_completionScroll) {
       m_completionScroll = m_completionSelected;
    }
@@ -2449,8 +2449,8 @@ void STApp::renderMemberCompletion()
       return;
    }
 
-   // Last word on the placement: the signature help is already on screen, and a
-   // list that ended up on it moves before anything is drawn into it.
+   // The signature help is already on screen, and a list that ended up on it
+   // moves before anything is drawn into it.
    stepAround(ImRect(m_signatureRectMin, m_signatureRectMax));
 
    m_completionRectMin = ImGui::GetWindowPos();
@@ -2560,6 +2560,15 @@ void STApp::renderMemberCompletion()
 
 // ============================================================================
 //  Statement completion
+//
+//  A list of statement skeletons, kept in its own state rather than folded into
+//  the member completion: the two can be answering about the same word, and only
+//  one of them can be on screen. While a statement list is up it takes the keys
+//  first, because what is being typed is a keyword rather than a name.
+//
+//  The overlay, the key handling and the state all follow the member completion
+//  it sits next to, down to the blocked-key bookkeeping that stops a press the
+//  list has taken from also reaching the editor.
 // ============================================================================
 
 /**
@@ -2567,19 +2576,17 @@ void STApp::renderMemberCompletion()
  * @param id                Editor id, matching the one passed to Render
  * @param editor            Editor that was just rendered
  * @param editorHasKeyboard Whether this editor, specifically, is the focused one
- * @param inVariables       True for the Variables pane, which holds the VAR
- *                          sections rather than statements
+ * @param inVariables       True for the Variables pane
  *
- * The pane decides what is on offer: a VAR_INPUT skeleton in the middle of a
- * loop body is not a suggestion, and a FOR loop among the declarations is not
- * either. The text decides the rest — a word that is not a keyword prefix, or a
- * caret inside a comment or a string, offers nothing.
+ * The pane decides what is on offer and the text decides the rest. A caret
+ * inside a comment, a string or a call offers nothing, and neither does a word
+ * that is not the start of a keyword or that was reached through a '.'.
  */
 void STApp::updateStatementCompletion(const char* id, TextEditor& editor, bool editorHasKeyboard, bool inVariables)
 {
    (void)id;
    // Both editors are visited every frame and this runs for each, so the geometry
-   // is only adopted when this editor is the one holding the list.
+   // is adopted only when this editor is the one holding the list.
    auto dismiss = [&]() {
       if (m_snippetEditor == &editor) {
          clearStatementCompletion();
@@ -2600,16 +2607,14 @@ void STApp::updateStatementCompletion(const char* id, TextEditor& editor, bool e
 
    const std::string& line = lines[static_cast<size_t>(cursor.mLine)];
 
-   // A keyword is not completed inside a comment or a string literal, and neither
-   // is a name. Checked before anything else so the dismissed-spot bookkeeping is
-   // not disturbed by a list that was never possible here.
+   // Checked before anything else, so that a list which was never possible here
+   // does not disturb the dismissed-spot bookkeeping.
    if (inCommentOrString(line, cursor.mColumn)) {
       dismiss();
       return;
    }
 
-   // Inside a call the word being written is an argument, not a statement. The
-   // signature help and the parameter list are what apply there.
+   // Inside a call the word being written is an argument, not a statement.
    if (m_signatureEditor == &editor) {
       dismiss();
       return;
@@ -2622,27 +2627,24 @@ void STApp::updateStatementCompletion(const char* id, TextEditor& editor, bool e
       return;
    }
 
-   // A word reached through a '.' is a member of something, and a statement
-   // keyword is never one. This is the case that decides it: with "re" typed
-   // after "motore.", REPEAT matches the word, and a list that opened here would
-   // take the keyboard off the member list that is the one being asked about.
+   // A word reached through a '.' is a member, and a keyword is never one. With
+   // "re" typed after "motore." REPEAT matches the word, so a list opening here
+   // would take the keyboard off the member list that the text is asking about.
    if (memberAccessPointAt(line, cursor.mColumn).active) {
       dismiss();
       return;
    }
 
-   // Only a word that is really the start of a keyword is worth a list. Anything
-   // looser hides an identifier that happens to begin like a statement, which is
-   // the same mistake from the other side.
+   // Only a genuine keyword prefix is worth a list. Anything looser hides an
+   // identifier that happens to begin like a statement.
    if (!hasStatementPrefix(prefix)) {
       dismiss();
       return;
    }
 
-   // Escape closed the list at this exact spot, and it has to stay closed there.
-   // The text still reads "IF", so recomputing from scratch would otherwise put
-   // the list straight back on the next frame and Escape would look like it had
-   // done nothing at all. Typing shifts the column, which reopens it.
+   // Escape closed the list at this exact spot and it has to stay closed there.
+   // The text still reads "IF", so recomputing would put the list straight back
+   // and Escape would look like it had done nothing. Typing shifts the column.
    if (m_snippetDismissedValid && m_snippetDismissed.line == cursor.mLine &&
        m_snippetDismissed.column == cursor.mColumn) {
       dismiss();
@@ -2657,10 +2659,9 @@ void STApp::updateStatementCompletion(const char* id, TextEditor& editor, bool e
       return;
    }
 
-   // The same subsequence walk rankSnippets performed, over the same text, kept so
-   // the list can paint the characters that matched: a fuzzy hit shows why it
-   // matched instead of only claiming to. The row is as long as that text, and
-   // only its first label.size() entries are painted.
+   // The subsequence walk rankSnippets performed, over the same text, kept so a
+   // fuzzy hit can show which characters matched. The row is as long as that
+   // text; only its first label.size() entries are painted.
    std::string needle = prefix;
    std::transform(needle.begin(), needle.end(), needle.begin(),
                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -2686,9 +2687,8 @@ void STApp::updateStatementCompletion(const char* id, TextEditor& editor, bool e
    }
 
    // A different pane or a longer pattern is a different question, so the
-   // highlight goes back to the best match rather than staying wherever the user
-   // had walked to, and a list that is no longer the one being asked about must
-   // not inherit its scroll position.
+   // highlight goes back to the best match and the scroll position does not
+   // carry over from a list that is no longer the one being asked about.
    if (m_snippetEditor != &editor || prefix != m_snippetPrefix || inVariables != m_snippetInVariables) {
       m_snippetSelected = 0;
       m_snippetScroll = 0;
@@ -2715,10 +2715,9 @@ void STApp::updateStatementCompletion(const char* id, TextEditor& editor, bool e
 /**
  * @brief Close the statement completion
  *
- * The dismissed spot is deliberately left alone: it is what dismissStatementCompletion
- * records, and clearing it here would wipe the record in the same breath that sets
- * it, leaving the list to reappear on the next frame. The flag is cleared where
- * the list opens again.
+ * The dismissed spot is left alone. It is what dismissStatementCompletion
+ * records, and clearing it here would wipe the record in the same breath that
+ * sets it.
  */
 void STApp::clearStatementCompletion()
 {
@@ -2737,9 +2736,8 @@ void STApp::clearStatementCompletion()
 /**
  * @brief Close the statement completion, and keep it closed where the caret is
  *
- * Escape has to be able to say no. Without the spot, the very next frame reads
- * the same word, finds the same matches and puts the list back, and the key
- * looks like it did nothing.
+ * Without the recorded spot the next frame reads the same word, finds the same
+ * matches and puts the list back.
  */
 void STApp::dismissStatementCompletion()
 {
@@ -2776,11 +2774,9 @@ void STApp::moveStatementCompletionByPage(int pages)
 /**
  * @brief Write the selected skeleton out, and put the caret inside it
  *
- * The prefix already typed is replaced, since the skeleton carries its own
- * keyword: accepting IF should not leave the IF that was typed next to the IF
- * that was written. The insertion goes through the editor's own InsertText, so
- * it lands in the undo history like anything else typed, and the line the caret
- * was on supplies the indentation the skeleton is written under.
+ * The typed prefix is replaced, since the skeleton carries its own keyword. The
+ * insertion goes through the editor's own InsertText, so it lands in the undo
+ * history like anything else typed.
  */
 void STApp::acceptStatementCompletion()
 {
@@ -2827,17 +2823,15 @@ void STApp::acceptStatementCompletion()
    }
    m_snippetEditor->InsertText(text);
 
-   // The caret is placed by hand: InsertText leaves it after the text it wrote,
-   // which for a multi-line skeleton would be on the last line of the construct
-   // rather than on the part that still has to be filled in.
+   // Placed by hand: InsertText leaves the caret after the text it wrote, which
+   // for a multi-line skeleton is the last line of the construct.
    const TextEditor::Coordinates caret{m_snippetLine + caretLine, caretCol};
    m_snippetEditor->SetCursorPosition(caret);
 
    clearStatementCompletion();
 
    // Every span below the insertion now describes a line further down than the
-   // one it was measured on, so the colours are dropped rather than moved: a
-   // colour on the wrong glyph is worse than no colour at all, and the next
+   // one it was measured on. They are dropped rather than moved, and the next
    // Validate paints them again from the text as it now stands.
    invalidateSemanticTokens();
 }
@@ -2845,9 +2839,8 @@ void STApp::acceptStatementCompletion()
 /**
  * @brief Draw the statement completion list
  *
- * Under the glyph being typed rather than at the edge of the pane, and drawn as
- * a borderless overlay: the editor keeps the keyboard, so the list filters itself
- * as the word grows instead of behaving like a dialog that took it away.
+ * A borderless overlay anchored to the glyph being typed. The editor keeps the
+ * keyboard, so the list filters itself as the word grows.
  */
 void STApp::renderStatementCompletion()
 {
@@ -2861,7 +2854,7 @@ void STApp::renderStatementCompletion()
    const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
    const int visible = std::min(count, kCompletionMaxRows);
 
-   // Follow the highlight, then keep the window inside the list.
+   // Follow the highlight, then keep the window within the list.
    if (m_snippetSelected < m_snippetScroll) {
       m_snippetScroll = m_snippetSelected;
    }
@@ -2879,8 +2872,7 @@ void STApp::renderStatementCompletion()
       }
    }
 
-   // A label and a dimmed detail need more room than a bare name, and the
-   // statement skeletons are longer than most identifiers.
+   // A label and a dimmed detail need more room than a bare name.
    const float width = std::min(560.0f, std::max(320.0f, ImGui::GetIO().DisplaySize.x * 0.45f));
    const float height = static_cast<float>(visible) * rowHeight;
    const ImVec2 position =
@@ -2900,8 +2892,8 @@ void STApp::renderStatementCompletion()
       return;
    }
 
-   // Last word on the placement: the signature help is already on screen, and a
-   // list that ended up on it moves before anything is drawn into it.
+   // The signature help is already on screen, and a list that ended up on it
+   // moves before anything is drawn into it.
    stepAround(ImRect(m_signatureRectMin, m_signatureRectMax));
 
    m_snippetRectMin = ImGui::GetWindowPos();
@@ -2988,10 +2980,10 @@ void STApp::renderStatementCompletion()
 
 /**
  * @brief Consume the statement completion keys
- *
- * Run before the member list does, because the two can be answering about the
- * same word. Arrows walk, Enter and Tab write the skeleton out, Escape closes.
  * @return the key taken, so the caller can block it on the owning editor
+ *
+ * Runs before the member list, because the two can be answering about the same
+ * word. Arrows walk, Enter and Tab write the skeleton out, Escape closes.
  */
 ImGuiKey STApp::handleStatementCompletionKeys()
 {
@@ -3034,10 +3026,9 @@ ImGuiKey STApp::handleStatementCompletionKeys()
 /**
  * @brief Drop the semantic spans the editors are painting
  *
- * The spans are line and column pairs measured against a text that has since
- * moved: a skeleton inserts lines, so every span underneath now points at a
- * glyph that is not the one it was measured on. Clearing costs a recolorize,
- * which is cheaper than leaving a variable painted on a keyword.
+ * The spans are line and column pairs measured against text that has since
+ * moved, so a skeleton leaves every span underneath it pointing at the wrong
+ * glyph. A recolorize is cheaper than a variable painted on a keyword.
  */
 void STApp::invalidateSemanticTokens()
 {
@@ -3964,12 +3955,11 @@ void STApp::compile()
 
 /**
  * @brief Directory the running undoStudio binary lives in
- * @return The directory, with no trailing slash, or empty when it cannot be told
+ * @return The directory without a trailing slash, or empty when it cannot be told
  *
- * The transpiler is looked for around here, since the build tree keeps the two
+ * The transpiler is looked for around here, because the build tree keeps the two
  * next to each other and an install that never reached /usr/local should still
- * work. An empty result simply means the search falls back to PATH alone, which
- * is why every caller treats it as a maybe rather than a failure.
+ * work. An empty result leaves the search on PATH alone.
  */
 static std::string executableDir()
 {
@@ -4004,16 +3994,14 @@ static std::string executableDir()
 /**
  * @brief Hand the project to st2cpp and put what it says in the Output panel
  *
- * The transpiler runs over the whole project rather than over the open buffer: a
- * POU refers to the ones beside it, so a single file on its own does not
- * resolve. The working directory is the project root, which is both what
- * "--workspace ." is relative to and where --project-style writes the per-POU
- * files under generated/.
+ * The whole project is compiled rather than the open buffer, since a POU refers
+ * to the ones beside it. The working directory is the project root, which is
+ * what "--workspace ." is relative to and where --project-style writes its
+ * per-POU files.
  *
- * --strict follows the project's own strictness rather than being hardcoded, so
- * that the build agrees with what the editor has been reporting on all along.
- * What the compiler writes about severity is what the panel shows, read off the
- * line: st2cpp prints the word in front of the message rather than in a field.
+ * --strict follows the project's own strictness, so that the build agrees with
+ * what the editor has been reporting. Severity is read off the line, st2cpp
+ * having no field for it.
  */
 void STApp::runTranspiler()
 {
@@ -4024,12 +4012,10 @@ void STApp::runTranspiler()
       return;
    }
 
-   // st2cpp is looked for on PATH and then in a few places around the running
-   // binary, because an install that never made it into /usr/local should still
-   // be usable from the IDE it is developed alongside. `command -v` answers for a
-   // bare name and for an absolute path alike, which is what lets one loop cover
-   // both, and it only accepts something executable, so a directory that happens
-   // to share the name is passed over.
+   // PATH first, then a few places around the running binary. command -v answers
+   // for a bare name and for an absolute path alike, so one loop covers both, and
+   // it only accepts something executable, so a directory of the same name is
+   // passed over.
    const std::string home = executableDir();
    std::string candidates = "st2cpp";
    for (const std::string& relative : {"st2cpp/st2cpp", "build/st2cpp/st2cpp", "../build/st2cpp/st2cpp"}) {
@@ -4061,8 +4047,8 @@ void STApp::runTranspiler()
       if (line.empty()) {
          continue;
       }
-      // Severity is what the word in front of the message says it is. A line
-      // that carries neither is the compiler narrating what it did.
+      // Severity is the word in front of the message. A line carrying neither is
+      // the compiler narrating what it did.
       std::string lower = line;
       std::transform(lower.begin(), lower.end(), lower.begin(),
                      [](unsigned char c) { return static_cast<char>(std::tolower(c)); });

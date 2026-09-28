@@ -625,24 +625,19 @@ private:
    //  Statement completion
    //
    //  Typing the first letters of a statement offers the statements that start
-   //  that way, and accepting one writes the whole skeleton: IF brings its THEN
-   //  and its END_IF, FOR brings its TO, BY and DO, and the caret lands on the
-   //  part still to be filled in. It is the same kind of list the member
-   //  completion draws and it takes the keyboard the same way, so the two never
-   //  fight over a key: while a statement list is up it is the one that
-   //  answers, because what is being typed is a keyword rather than a name.
+   //  that way, and accepting one writes the whole skeleton with the caret on the
+   //  part still to be filled in.
    //
-   //  The two keep separate state on purpose. The member list is keyed on the
-   //  text around a '.' and on the scope at the caret, neither of which says
-   //  anything about a keyword, and merging them would mean every update having
-   //  to answer a question only one of the two can.
+   //  The state is kept apart from the member completion's. The two can be
+   //  answering about the same word and only one of them can be on screen, so
+   //  each has to be able to tell that the other is up.
    // ============================================================================
 
    TextEditor* m_snippetEditor = nullptr;   ///< Editor the list belongs to
 
    std::vector<StatementSnippet> m_snippetCandidates; ///< Matching skeletons, best first
 
-   /// One row per candidate: a byte per label character, 1 where the pattern matched
+   /// One row per candidate, a byte per label character, 1 where the pattern matched
    std::vector<std::vector<int>> m_snippetMatchMask;
 
    int m_snippetSelected = 0;         ///< Index into m_snippetCandidates
@@ -678,10 +673,6 @@ private:
    bool statementCompletionOpen() const { return m_snippetEditor != nullptr && !m_snippetCandidates.empty(); }
 
    /// @brief Drop the semantic spans the editors are painting
-   ///
-   /// The spans are stated as line and column pairs, so an insertion that adds
-   /// lines moves every span below it onto the wrong glyph, and a wrong colour is
-   /// worse than no colour. Cheap enough to do on every structural edit.
    void invalidateSemanticTokens();
 
    /// Window flags for the member completion list.

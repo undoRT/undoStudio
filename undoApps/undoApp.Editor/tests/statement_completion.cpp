@@ -2,12 +2,10 @@
 // must offer the statements that start that way, and accepting one must write the
 // whole skeleton with the caret on the part still to be filled in.
 //
-// The two cases at the end are the ones that decide where the list is allowed to
-// open. Both were wrong before they were tested: a fuzzy match took the list over
-// the member completion after "motore.re" (REPEAT matches "re"), and it hid an
-// identifier that happens to begin like a keyword. A list that steals the
-// keyboard from another one is worse than no list, because the user is typing
-// something and nothing answers.
+// The last third is where the list is allowed to open. Both of those cases were
+// wrong before they were tested: a fuzzy match took the list over the member
+// completion after "motore.re", and it hid an identifier that begins like a
+// keyword.
 //
 // Uses an ImGui context without a window, so it runs headless.
 #include <imgui.h>
@@ -44,9 +42,8 @@ static void frame(STApp& app) {
 ///
 /// TextEditor claims the keyboard from inside its own Render by setting
 /// io.WantTextInput, and a headless frame cannot reproduce the click sequence
-/// that gets it there reliably. Injecting the flag between NewFrame and the
-/// render is the same signal, at the same point in the frame, so the code under
-/// test takes exactly the path it takes when a user clicks into the editor.
+/// that gets it there. Injecting the flag between NewFrame and the render is the
+/// same signal at the same point in the frame.
 static void frameWithBodyEditorFocused(STApp& app) {
   ImGuiIO& io = ImGui::GetIO();
   io.AddMousePosEvent(600.0f, 700.0f);
@@ -164,9 +161,9 @@ int main() {
 
   // --- a word reached through a '.' belongs to the member list ---
   //
-  // "re" is the case that matters: REPEAT is a subsequence match for it, and a
-  // list that opened here would switch the member completion off underneath the
-  // word the user is actually writing.
+  // "re" is the case that matters: REPEAT is a subsequence match for it, so a
+  // list opening here would switch the member completion off underneath the word
+  // being typed.
   typeOnLine(app, "\nmotore.re\n", 1, 9);
   check(!app.statementCompletionOpen(), "a member access keeps the statement list closed");
   check(app.m_completionEditor == app.m_bodyEditor.get(),

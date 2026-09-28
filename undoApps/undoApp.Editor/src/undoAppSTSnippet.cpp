@@ -1,6 +1,7 @@
 /**
  * @file undoAppSTSnippet.cpp
- * @brief ST statement skeletons offered by the editor's suggestion list
+ * @brief Statement skeletons offered by the editor's suggestion list
+ * @ingroup undoapps
  * @author Salvatore Bamundo
  * @date July 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -17,11 +18,10 @@ namespace ST {
 
 namespace {
 
-/// @brief Words a statement prefix is made of
+/// @brief Characters a statement prefix is made of
 ///
-/// Everything a keyword can contain and an identifier cannot: a statement is
-/// never named, and letting a dot or a bracket into the word would swallow the
-/// expression to the left of the caret.
+/// A keyword character run. A dot or a bracket would otherwise be swallowed into
+/// the word along with the expression to the left of the caret.
 bool isWordChar(char c)
 {
    return std::isalpha(static_cast<unsigned char>(c)) != 0 || c == '_';
@@ -30,13 +30,9 @@ bool isWordChar(char c)
 /**
  * @brief The statement skeletons, in the order the list offers them
  *
- * The whole-statement skeletons come first and the bare closing keywords after
- * them, because a user who has typed "end" wants the list to be about closing
- * what they just opened, not about every statement that happens to match.
- *
- * The order is otherwise the order the language teaches: the constructs that
- * nest come before the ones that close them, and the simple statements that end
- * a body come last.
+ * The order is the order the language teaches: the constructs that nest, then
+ * the keywords that close them, then the statements that leave a body. Ranking
+ * reorders this, but only among what actually matched.
  */
 std::vector<StatementSnippet> buildSnippets()
 {
@@ -49,25 +45,24 @@ std::vector<StatementSnippet> buildSnippets()
                        {"IF  THEN", "\t", "END_IF"}, 0, 3});
    snippets.push_back({"IF / ELSE", "conditional with an alternative", "IF", SnippetPane::Body,
                        {"IF  THEN", "\t", "ELSE", "\t", "END_IF"}, 0, 3});
-   // One caret per skeleton, and the caret is placed so that typing on finishes the
-   // statement: "FOR | := 0 TO  BY 1 DO" becomes "FOR i := 0 TO n BY 1 DO" as the
-   // word is written, leaving only the upper bound to fill in. That is also the IEC
-   // 61131-3 shape, where the control variable is assigned rather than named.
+   // The caret sits where typing on completes the statement, so "FOR | := 0 TO
+   // BY 1 DO" becomes "FOR i := 0 TO n BY 1 DO" and only the upper bound is left
+   // over. The := is the IEC 61131-3 shape, where the control variable is
+   // assigned rather than named.
    snippets.push_back({"FOR ... END_FOR", "counted loop", "FOR", SnippetPane::Body,
                        {"FOR  := 0 TO  BY 1 DO", "\t", "END_FOR"}, 0, 4});
    snippets.push_back({"WHILE ... END_WHILE", "loop on a condition", "WHILE", SnippetPane::Body,
                        {"WHILE  DO", "\t", "END_WHILE"}, 0, 6});
    snippets.push_back({"REPEAT ... END_REPEAT", "loop until a condition", "REPEAT", SnippetPane::Body,
                        {"REPEAT", "\t", "UNTIL ", "END_REPEAT"}, 2, 6});
-   // A CASE branch is a label and a statement, so the skeleton carries one branch
-   // already shaped like that: a bare ';' is a valid statement, which is what
-   // makes the branch parse before the label and the statement are typed.
+   // A CASE branch is a label and a statement. The skeleton carries one branch in
+   // that shape already: a bare ';' is a valid statement, so the branch parses
+   // before the label is typed.
    snippets.push_back({"CASE ... END_CASE", "choice on a value", "CASE", SnippetPane::Body,
                        {"CASE  OF", "\t;", "ELSE", "\t;", "END_CASE"}, 0, 5});
 
-   // Closing keywords, so a construct can be closed from either end of it: the
-   // skeleton writes them, but a body that was pasted in or typed by hand still
-   // needs them one at a time.
+   // Closing keywords, so a construct can be closed from either end. A body that
+   // was pasted in still needs them one at a time.
    snippets.push_back({"ELSIF ... THEN", "another condition", "ELSIF", SnippetPane::Body,
                        {"ELSIF  THEN", "\t"}, 0, 6});
    snippets.push_back({"ELSE", "otherwise", "ELSE", SnippetPane::Body, {"ELSE", "\t"}, 0, 0});
@@ -88,11 +83,10 @@ std::vector<StatementSnippet> buildSnippets()
    // ------------------------------------------------------------------
    // Variables pane: the sections a POU declares things in
    //
-   // Each one carries a declaration line with nothing on it but the semicolon, and
-   // the caret on the name: typing "x : INT" at the caret completes the line, which
-   // is the same type-on contract the loop skeletons follow. Spelling out the shape
-   // as ": INT;" instead would leave the user with two blanks and one caret, and the
-   // second blank is the one nobody goes looking for.
+   // The declaration line carries only the semicolon and the caret sits on the
+   // name, so typing "x : INT" completes the line. Spelling out ": INT;" instead
+   // would leave two blanks and one caret, and the second blank is the one nobody
+   // goes looking for.
    // ------------------------------------------------------------------
    snippets.push_back({"VAR_INPUT", "values coming in", "VAR_INPUT", SnippetPane::Variables,
                        {"VAR_INPUT", "\t;", "END_VAR"}, 1, 1});
@@ -139,9 +133,8 @@ std::string statementPrefixAt(const std::string& line, int column, int& startCol
    if (column <= 0 || static_cast<size_t>(column) > line.size()) {
       return {};
    }
-   // The word has to end at the caret. A caret sitting inside one is a caret
-   // editing it, and replacing "IF" with a skeleton there would leave "IF"
-   // welded to whatever followed it.
+   // The word has to end at the caret. A caret inside one is editing it, and
+   // replacing "IF" with a skeleton there would leave it welded to what follows.
    if (static_cast<size_t>(column) < line.size() && isWordChar(line[static_cast<size_t>(column)])) {
       return {};
    }
@@ -180,11 +173,10 @@ void rankSnippets(std::vector<StatementSnippet>& snippets, const std::string& pr
    std::transform(needle.begin(), needle.end(), needle.begin(),
                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
-   // The score is where the match begins, not how good it is: a label that opens
-   // with what was typed is about that word, and one that merely contains it
-   // further along is not. This is what puts END_IF ahead of IF ... END_IF once
-   // "end" has been typed, and what keeps the whole-statement skeletons in front
-   // of the bare closing keywords while the prefix is still "IF".
+   // The score is where the match begins, not how close it is. That is what puts
+   // END_IF ahead of IF ... END_IF once "end" has been typed, and what keeps the
+   // whole-statement skeletons in front of the closing keywords while the prefix
+   // is still "IF".
    std::vector<int> scores;
    scores.reserve(snippets.size());
    std::vector<StatementSnippet> kept;
@@ -196,10 +188,9 @@ void rankSnippets(std::vector<StatementSnippet>& snippets, const std::string& pr
          kept.push_back(std::move(snippet));
          continue;
       }
-      // A subsequence match rather than a prefix one, which is what makes "fi"
-      // find IF and "wh" find WHILE. The label is searched; `insert` is folded in
-      // so that a label spelled with an ellipsis cannot hide the keyword that
-      // actually gets written.
+      // A subsequence match rather than a prefix one, so that "fi" finds IF and
+      // "wh" finds WHILE. `insert` is searched along with the label so that an
+      // ellipsis in the label cannot hide the keyword actually written.
       std::string haystack = snippet.label;
       haystack += ' ';
       haystack += snippet.insert;
@@ -226,8 +217,7 @@ void rankSnippets(std::vector<StatementSnippet>& snippets, const std::string& pr
       }
    }
 
-   // A stable sort, so snippets that score alike keep the order the table put them
-   // in, which is the order the language teaches.
+   // Stable, so snippets that score alike keep the order the table gives them.
    std::vector<size_t> order(kept.size());
    for (size_t i = 0; i < order.size(); ++i) {
       order[i] = i;
@@ -270,12 +260,10 @@ void expandSnippet(const StatementSnippet& snippet, const std::string& base, con
       }
    }
 
-   // The caret is stated against the unindented template, where a "\t" is one
-   // character, and is resolved here against the text actually written, where it
-   // is as wide as the editor shows a tab. The two differ as soon as the line
-   // starts with an indent step, which is exactly where the interesting carets
-   // are: the name in "    : ;" is written before the ":", not after four
-   // characters of it.
+   // The caret is stated against the template, where a "\t" is one character, and
+   // is resolved here against the written text, where it is as wide as the editor
+   // shows a tab. The two differ wherever the line starts with an indent step,
+   // which is where the carets that matter are.
    caretLine = snippet.caretLine;
    caretCol = static_cast<int>(base.size());
    if (snippet.caretLine >= 0 && static_cast<size_t>(snippet.caretLine) < snippet.lines.size()) {

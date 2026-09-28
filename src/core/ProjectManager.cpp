@@ -498,7 +498,7 @@ bool ProjectManager::readProjectTOML()
       }
       if (sec.name == "semantics") {
          // A project written before this key existed carries no [semantics]
-         // section, so it reads as strict — new projects are written strict.
+         // section, so it reads as strict, which is what a new project is written with.
          m_config.strictness = tomlOnOff(sec, "strictness", "on");
       }
    }
