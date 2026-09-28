@@ -12,6 +12,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Build options
 option(BUILD_DEMO_APP "Build the demo undoApp plugin" OFF)
 option(BUILD_EDITOR_APP "Build the multi-format Editor plugin (ST, JSON, C++)" ON)
+option(BUILD_TERMINAL_APP "Build the Terminal plugin (embedded shell)" ON)
 option(USE_SYSTEM_GLFW "Use system GLFW instead of bundled" OFF)
 option(ENABLE_IMGUI_DOCKING "Enable ImGui docking support" ON)
 option(USE_TINYFILEDIALOGS "Use tinyfiledialogs for native file dialogs" OFF)
@@ -211,6 +212,10 @@ if(BUILD_EDITOR_APP)
     add_subdirectory(undoApps/undoApp.Editor)
 endif()
 
+if(BUILD_TERMINAL_APP)
+    add_subdirectory(undoApps/undoApp.Terminal)
+endif()
+
 # ============================================
 # Installation
 # ============================================
@@ -254,6 +259,7 @@ message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Build Demo App (plugin): ${BUILD_DEMO_APP}")
 message(STATUS "Build Editor App (plugin): ${BUILD_EDITOR_APP}")
+message(STATUS "Build Terminal App (plugin): ${BUILD_TERMINAL_APP}")
 message(STATUS "Platform: ${CMAKE_SYSTEM_NAME}")
 message(STATUS "OpenGL Found: ${OPENGL_FOUND}")
 message(STATUS "GLFW Build X11: ${GLFW_BUILD_X11}")
