@@ -111,11 +111,17 @@ Compile reports that it cannot find the transpiler and everything else works.
 
 Both suites run headless, so no GPU and no display are needed.
 
-The core, which needs no graphics context at all:
+The core: the state files, and the recent projects list:
 
 ~~~bash
 ./src/core/tests/run_tests.sh
+
+# or a subset, by name
+./src/core/tests/run_tests.sh recents
 ~~~
+
+It needs the project to have been built, since one of the two links against
+`libundoStudioCore.so`.
 
 The Editor, which builds each test on its own and drives real ImGui frames
 without a window:
