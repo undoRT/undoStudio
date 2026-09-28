@@ -52,6 +52,29 @@ Makefile
 install_manifest.txt
 compile_commands.json
 
+# CMake generated files that the top-level configuration writes into the source
+# tree, because the project is configured in-source: CPack, the Doxygen input
+# and the CTest driver are all regenerated on every configure run.
+CPackConfig.cmake
+CPackSourceConfig.cmake
+CTestTestfile.cmake
+CMakeDoxyfile.in
+CMakeDoxygenDefaults.cmake
+progress.marks
+
+# The application binary itself
+/undoStudio
+
+# ImGui state written at runtime rather than configured by hand: imgui.ini is
+# Dear ImGui's own window/menu state, undoStudio_layout.ini is the dock layout
+# the user has arranged and should be able to throw away and rebuild.
+imgui.ini
+undoStudio_layout.ini
+
+# st2cpp is built out-of-source under build/; a stray in-source configure of the
+# CLI leaves this behind.
+/st2cpp/
+
 # Temporary files
 *.tmp
 *.log
@@ -67,3 +90,8 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Editor and IDE state, which describes how one machine happens to be set up
+.vscode/
+.idea/
+*.code-workspace
