@@ -83,6 +83,7 @@ private:
    int m_active = 0;
    bool m_panelRegistered = false;
    bool m_fontTried = false;
+   bool m_fontMissing = false; ///< The monospace font was not found
 };
 
 } // namespace Terminal

@@ -70,6 +70,7 @@ private:
    int m_viewLeft = 0;       ///< First viewport column under the cursor
    float m_cellWidth = 0.0f;
    float m_cellHeight = 0.0f;
+   float m_fontSize = 0.0f;   ///< Size the glyphs are actually drawn at
 };
 
 } // namespace Terminal

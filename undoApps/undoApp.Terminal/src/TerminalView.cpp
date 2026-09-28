@@ -107,11 +107,18 @@ void TerminalView::draw(TerminalSession& session, ImFont* font, bool focused)
       io.WantTextInput = true;
    }
 
+   // The cell is measured with the terminal font pushed, and the glyphs are drawn
+   // with the same font on the draw list's own stack. Asking for a size
+   // separately is how a grid ends up sized for one font and painted with
+   // another: ImGui 1.92 scales the font handed to AddText by the size passed
+   // beside it, so a cell measured at 15 and drawn at 20 puts every glyph a third
+   // wider than the space it has.
    if (font != nullptr) {
       ImGui::PushFont(font);
    }
    m_cellWidth = ImGui::CalcTextSize("M").x;
    m_cellHeight = ImGui::GetTextLineHeight();
+   m_fontSize = ImGui::GetFontSize();
    if (font != nullptr) {
       ImGui::PopFont();
    }
@@ -137,8 +144,19 @@ void TerminalView::draw(TerminalSession& session, ImFont* font, bool focused)
    drawList->AddRectFilled(origin, ImVec2(origin.x + available.x, origin.y + visibleRows * m_cellHeight),
                            defaultBackground);
 
-   ImFont* drawFont = (font != nullptr) ? font : ImGui::GetFont();
-   const float fontSize = ImGui::GetFontSize();
+   // The glyph sits in the middle of its cell rather than against the top of it:
+   // the line height carries leading the glyph itself does not. The size handed
+   // to AddText is the one the cell was measured at, not whatever the context
+   // happens to be on, which is what keeps the two in step.
+   ImFont* drawFont = font;
+   const float textOffset = (m_cellHeight - m_fontSize) * 0.5f;
+
+   // Clipped to the pane. The grid is sized to fit, but a glyph a fraction of a
+   // pixel wider than its cell puts the last column of every row over whatever is
+   // beside the pane, and a terminal that paints on the tab bar is not a terminal
+   // anyone can read.
+   const ImVec2 clipMax(origin.x + cols * m_cellWidth, origin.y + visibleRows * m_cellHeight);
+   drawList->PushClipRect(origin, clipMax, true);
 
    for (int row = 0; row < visibleRows; ++row) {
       const CellLine& line = session.viewport()[static_cast<size_t>(row)];
@@ -191,13 +209,14 @@ void TerminalView::draw(TerminalSession& session, ImFont* font, bool focused)
          }
          if (!run.empty()) {
             const ImU32 colour = toImU32(foreground);
-            const ImVec2 at(origin.x + static_cast<float>(col) * m_cellWidth, y);
+            const ImVec2 at(origin.x + static_cast<float>(col) * m_cellWidth, y + textOffset);
             if (cell.bold) {
-               // A fake bold: the outline of the same glyph a pixel to the right,
-               // which is what a monospace font at one size cannot be asked to do.
-               drawList->AddText(drawFont, fontSize, ImVec2(at.x + 1.0f, at.y), colour, run.c_str());
+               // A synthetic bold: DejaVu Sans Mono is loaded in one weight, and
+               // the same glyph a pixel to the right is what stands in for the
+               // other one.
+               drawList->AddText(drawFont, m_fontSize, ImVec2(at.x + 1.0f, at.y), colour, run.c_str());
             }
-            drawList->AddText(drawFont, fontSize, at, colour, run.c_str());
+            drawList->AddText(drawFont, m_fontSize, at, colour, run.c_str());
             if (cell.underline) {
                drawList->AddLine(ImVec2(at.x, y + m_cellHeight - 1.0f),
                                  ImVec2(origin.x + static_cast<float>(end) * m_cellWidth, y + m_cellHeight - 1.0f),
@@ -224,7 +243,7 @@ void TerminalView::draw(TerminalSession& session, ImFont* font, bool focused)
             const uint32_t background = cell.reverse ? cell.fg : cell.bg;
             drawList->AddRectFilled(at, to, toImU32(foreground));
             if (!cell.text.empty()) {
-               drawList->AddText(drawFont, fontSize, at, toImU32(background), cell.text.c_str());
+               drawList->AddText(at, toImU32(background), cell.text.c_str());
             }
          } else {
             // The caret is past the end of the line, which is where a shell leaves
@@ -237,6 +256,8 @@ void TerminalView::draw(TerminalSession& session, ImFont* font, bool focused)
          }
       }
    }
+
+   drawList->PopClipRect();
 
    // The selection, over whatever it covers.
    if (m_hasSelection || m_selecting) {

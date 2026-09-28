@@ -57,6 +57,10 @@ bool TerminalApp::initialize()
    if (m_panelRegistered) {
       return true;
    }
+   // The font is loaded here rather than on the first frame that draws the
+   // terminal: an atlas built in the middle of a frame is not on the GPU until
+   // the next one, and the first thing the user would see is a grid of nothing.
+   ensureFont();
    undoStudio::ui::ImGuiManager::getInstance().addPanel(kPanelName, [this]() { render(); });
    m_panelRegistered = true;
    std::cout << "[undoApp.Terminal] panel registered" << std::endl;
@@ -85,11 +89,21 @@ void TerminalApp::ensureFont()
    // misplaced rules.
    m_font = ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/fonts/DejaVuSansMono.ttf", kFontSize);
    if (m_font == nullptr) {
-      std::cerr << "[undoApp.Terminal] resources/fonts/DejaVuSansMono.ttf not found, "
-                   "the terminal will be drawn with the default font" << std::endl;
+      // Said out loud in the pane, not only on the console: without this font the
+      // grid is drawn with Roboto, which is proportional, and every column is a
+      // guess. The message is the difference between a terminal that looks odd on
+      // purpose and one that looks broken.
+      m_fontMissing = true;
       m_font = ImGui::GetFont();
+      std::cerr << "[undoApp.Terminal] resources/fonts/DejaVuSansMono.ttf not found: "
+                   "run the IDE from the repository root" << std::endl;
    } else {
       ImGui::GetIO().Fonts->Build();
+      // Said on success too: a terminal drawn with the wrong font looks like a
+      // broken one, and the console is where that gets settled. The size is read
+      // off the font rather than measured, since measuring needs a frame and this
+      // runs before the first one.
+      std::cout << "[undoApp.Terminal] monospace font loaded at " << m_font->LegacySize << " px" << std::endl;
    }
 }
 
@@ -176,7 +190,6 @@ void TerminalApp::drawTabs()
 
 void TerminalApp::render()
 {
-   ensureFont();
    ensureTab();
 
    drawTabs();
