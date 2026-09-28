@@ -133,6 +133,7 @@ add_library(undoStudioCore SHARED
     src/core/Application.cpp
     src/core/PluginManager.cpp
     src/core/ProjectManager.cpp
+    src/core/Settings.cpp
     src/services/WindowServiceGLFW.cpp
     src/ui/ImGuiManager.cpp
 )
