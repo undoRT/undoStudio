@@ -35,8 +35,6 @@ sudo apt install libgl1-mesa-dev libglu1-mesa-dev freeglut3-dev
 sudo apt install libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev
 ~~~
 
-The full list is kept in [libSetupOS.txt](libSetupOS.txt).
-
 Everything else is a submodule: GLFW, Dear ImGui, implot, ImGuiColorTextEdit,
 st2cpp, stb, tinyfiledialogs and nlohmann_json are built from source, so there is
 no library to install for them.
@@ -55,19 +53,26 @@ later:
 git submodule update --init --recursive
 ~~~
 
-Then configure and build. An out-of-source build is the tidier choice and keeps
-the working tree free of build output:
+Then configure and build:
 
 ~~~bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j"$(nproc)"
 ~~~
 
-The result is `build/undoStudio`, the core library `build/libundoStudioCore.so`
-and the Editor undoApp in `build/plugins/undoApp.Editor.so`.
+Object files and CMake state stay in `build/`, but everything that is looked up
+at run time is written next to `resources/`, because that is how the IDE finds
+it:
 
-An in-source build (`cmake -B .`) also works, and is what the ignore rules in
-`.gitignore` are written for. It is not the recommended way round.
+| | |
+|---|---|
+| executable | `undoStudio` |
+| core library | `libundoStudioCore.so` |
+| undoApps | `plugins/*.so` |
+| fonts, icons, themes, layout | `resources/` |
+
+An in-source build (`cmake -B .`) works as well and differs only in that the
+intermediates land in the root too.
 
 ### Build options
 
@@ -88,8 +93,9 @@ Run it from the repository root:
 ~~~
 
 The root matters: fonts, icons and themes are opened by relative path, so from
-anywhere else the IDE comes up without them. An installed copy keeps them under
-`share/undoStudio/resources`, which is where `cmake --install` puts them.
+anywhere else the IDE comes up without them. For the same reason an installed
+copy has to be started from the directory that holds `resources/` and
+`plugins/`, which is where `cmake --install` writes them, `share/undoStudio`.
 
 ## The Structured Text transpiler
 
