@@ -1,0 +1,151 @@
+name: release
+
+# A tag alone is not a release: it is a request for one. The archive is built
+# when the release is published, so the artefact is only ever attached to a
+# release somebody deliberately made.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build as, e.g. v0.4.0
+        required: true
+        default: v0.4.0
+
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    name: Build the release archive
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Every dependency is a submodule and the two undoRT forks have to be
+          # present, or the editor has no source to compile. The archive itself
+          # ships no build tree, so a shallow checkout is not enough here.
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake git \
+            libgl1-mesa-dev libglu1-mesa-dev freeglut3-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev \
+            libglm-dev
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Build the st2cpp command line
+        # The editor shells out to this for the Compile button, so an archive
+        # without it ships a button that reports it cannot find the transpiler.
+        run: |
+          cmake -S third_party/st2cpp -B build/st2cpp -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/st2cpp -j"$(nproc)"
+
+      - name: Test
+        run: |
+          ./src/core/tests/run_tests.sh
+          ./undoApps/undoApp.Editor/tests/run_tests.sh
+
+      - name: Stage the tree
+        env:
+          VERSION: ${{ github.event.inputs.tag || github.event.release.tag_name }}
+        run: |
+          set -eu
+          version="${VERSION#v}"
+          root="undoStudio-$version"
+
+          mkdir -p "$root/st2cpp"
+          cp -a undoStudio libundoStudioCore.so plugins resources "$root/"
+          cp -a build/st2cpp/st2cpp "$root/st2cpp/"
+
+          cat > "$root/README.txt" <<EOF
+          undoStudio $version
+
+          Run it from this directory:
+
+              ./undoStudio
+
+          The root matters. Fonts, icons, themes and the shipped layout are
+          opened as resources/... and the undoApps are loaded from plugins/,
+          both relative to the working directory, so from anywhere else the IDE
+          comes up without them.
+
+          What is here:
+
+            undoStudio            the IDE
+            libundoStudioCore.so  the core library it links
+            plugins/              the undoApps, loaded at start-up
+            resources/            fonts, icons, themes, default layout
+            st2cpp/st2cpp         the transpiler the Compile button invokes
+
+          System packages still have to be on the machine: the X11 and OpenGL
+          development libraries GLFW builds against, and glm. They are in the
+          README under "System packages".
+          EOF
+
+      - name: Check the staged tree
+        env:
+          VERSION: ${{ github.event.inputs.tag || github.event.release.tag_name }}
+        run: |
+          set -eu
+          root="undoStudio-${VERSION#v}"
+
+          # The archive has to run from where it was unpacked, which means the
+          # library has to resolve through $ORIGIN and the resources and the
+          # undoApps have to sit beside the binary.
+          ldd "$root/undoStudio" | grep -q "not found" && {
+            echo "undoStudio does not resolve its libraries in the staged tree"; exit 1; }
+          ldd "$root/plugins/undoApp.Editor.so" | grep -q "not found" && {
+            echo "undoApp.Editor does not resolve its libraries in the staged tree"; exit 1; }
+
+          for required in \
+            "$root/undoStudio" \
+            "$root/libundoStudioCore.so" \
+            "$root/plugins/undoApp.Editor.so" \
+            "$root/plugins/undoApp.Terminal.so" \
+            "$root/resources/undoStudio_layout.ini" \
+            "$root/resources/fonts" \
+            "$root/resources/icons" \
+            "$root/resources/themes" \
+            "$root/st2cpp/st2cpp"
+          do
+            [ -e "$required" ] || { echo "missing from the archive: $required"; exit 1; }
+          done
+
+          test -x "$root/st2cpp/st2cpp" || { echo "the st2cpp CLI is not executable"; exit 1; }
+
+          echo "staged tree is complete"
+
+      - name: Archive
+        env:
+          VERSION: ${{ github.event.inputs.tag || github.event.release.tag_name }}
+        run: |
+          set -eu
+          version="${VERSION#v}"
+          tar -czf "undoStudio-$version-linux-x86_64.tar.gz" "undoStudio-$version"
+          sha256sum "undoStudio-$version-linux-x86_64.tar.gz" > "undoStudio-$version-linux-x86_64.tar.gz.sha256"
+          cat "undoStudio-$version-linux-x86_64.tar.gz.sha256"
+
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -eu
+          version="${RELEASE_TAG#v}"
+          gh release upload "$RELEASE_TAG" \
+            "undoStudio-$version-linux-x86_64.tar.gz" \
+            "undoStudio-$version-linux-x86_64.tar.gz.sha256" \
+            --clobber
