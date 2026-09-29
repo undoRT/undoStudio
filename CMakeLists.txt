@@ -2,7 +2,7 @@
 # Updated for latest GLFW syntax with ImGui docking support
 
 cmake_minimum_required(VERSION 3.15)
-project(undoStudio)
+project(undoStudio VERSION 0.4.0)
 
 # C++ standard settings
 set(CMAKE_CXX_STANDARD 17)
@@ -230,6 +230,21 @@ if(BUILD_TERMINAL_APP)
 endif()
 
 # ============================================
+# Relocatable linking
+# ============================================
+# CMake bakes the absolute build tree into RUNPATH by default, which finds
+# libundoStudioCore.so in place and nowhere else. $ORIGIN finds it wherever
+# the tree is unpacked, which is what a release archive needs. The undoApps
+# sit one level down, in plugins/, so they reach the core through $ORIGIN/..
+set_target_properties(undoStudio PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+)
+set_target_properties(undoStudioCore PROPERTIES
+    INSTALL_RPATH "$ORIGIN"
+)
+
+# ============================================
 # Installation
 # ============================================
 install(TARGETS undoStudio undoStudioCore
@@ -250,8 +265,18 @@ if(BUILD_EDITOR_APP)
     )
 endif()
 
+if(BUILD_TERMINAL_APP)
+    install(TARGETS undoApp.Terminal
+        LIBRARY DESTINATION share/undoStudio/plugins
+    )
+endif()
+
 install(DIRECTORY resources/
     DESTINATION share/undoStudio/resources
+)
+
+install(FILES resources/undoStudio.desktop
+    DESTINATION share/applications
 )
 
 # ============================================

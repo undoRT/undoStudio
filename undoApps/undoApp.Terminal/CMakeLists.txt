@@ -52,6 +52,8 @@ if(UTIL_LIBRARY)
 endif()
 
 set_target_properties(undoApp.Terminal PROPERTIES
+    BUILD_RPATH "$ORIGIN/.."
+    INSTALL_RPATH "$ORIGIN/.."
     PREFIX ""                                             # "undoApp.Terminal.so", no "lib" prefix
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/plugins
     POSITION_INDEPENDENT_CODE ON

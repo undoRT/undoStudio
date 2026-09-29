@@ -1,10 +1,11 @@
 [Desktop Entry]
-Name=undoStudio
-Comment=Industrial Automation IDE
-Exec=/home/salvatore/Desktop/undoRT/undoStudio/build/undoStudio
-Icon=/home/salvatore/Desktop/undoRT/undoStudio/resources/icons/undoRT_logo.png
-Terminal=false
 Type=Application
+Name=undoStudio
+GenericName=Industrial Automation IDE
+Comment=Edit and compile IEC 61131-3 Structured Text to native C++17
+Exec=undoStudio
+Icon=undoStudio
+Terminal=false
 Categories=Development;IDE;
 StartupNotify=true
 StartupWMClass=undoStudio

@@ -115,6 +115,8 @@ target_link_libraries(undoApp.Editor PRIVATE
 # ------------------------------------------------------------------
 
 set_target_properties(undoApp.Editor PROPERTIES
+    BUILD_RPATH "$ORIGIN/.."
+    INSTALL_RPATH "$ORIGIN/.."
     PREFIX ""                              # Don't prepend "lib" to the output filename
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/plugins
     POSITION_INDEPENDENT_CODE ON            # Required for shared libraries
