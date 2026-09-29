@@ -307,7 +307,7 @@ SymbolIndex buildIndex(const SymbolTable& st, ScopeId root)
       if (std::find(scopes.begin(), scopes.end(), sym.scopeId) != scopes.end()) {
          // Later declarations are the more local ones and win, so a METHOD
          // parameter correctly shadows a POU variable of the same name.
-         index[SymbolTable::normalizeKey(sym.name)] = sym.id;
+         index[st.normalizeKey(sym.name)] = sym.id;
       }
    });
    return index;
@@ -328,7 +328,7 @@ SemanticTokenSet collectSemanticTokens(const TranslationUnit& tu,
    const SymbolIndex globalIndex = buildIndex(symTab, symTab.globalScopeId());
 
    auto categoryIn = [&](const SymbolIndex& index, const std::string& name) {
-      const std::string key = SymbolTable::normalizeKey(name);
+      const std::string key = symTab.normalizeKey(name);
       auto it = index.find(key);
       if (it == index.end()) {
          it = globalIndex.find(key);
@@ -521,7 +521,7 @@ DeclarationIndex collectDeclarations(const TranslationUnit& tu, const SymbolTabl
    const SymbolIndex globalIndex = buildIndex(symTab, symTab.globalScopeId());
 
    auto categoryFor = [&](const SymbolIndex& scopeIndex, const std::string& name) {
-      const std::string key = SymbolTable::normalizeKey(name);
+      const std::string key = symTab.normalizeKey(name);
       auto it = scopeIndex.find(key);
       if (it == scopeIndex.end()) {
          it = globalIndex.find(key);
@@ -550,7 +550,7 @@ DeclarationIndex collectDeclarations(const TranslationUnit& tu, const SymbolTabl
       decl.category = categoryFor(scopeIndex, name);
       decl.typeText = typeText;
       decl.kindText = kindText;
-      index[SymbolTable::normalizeKey(name)].push_back(std::move(decl));
+      index[symTab.normalizeKey(name)].push_back(std::move(decl));
    };
 
    for (const auto& pou : tu.pous) {
@@ -592,7 +592,7 @@ DeclarationIndex collectDeclarations(const TranslationUnit& tu, const SymbolTabl
             decl.category = SymCategory::Parameter;
             decl.typeText = describeType(param.type);
             decl.kindText = "PARAMETER";
-            index[SymbolTable::normalizeKey(param.name)].push_back(std::move(decl));
+            index[symTab.normalizeKey(param.name)].push_back(std::move(decl));
          }
       }
    }
@@ -875,13 +875,13 @@ MemberList collectBlockMembers(const SymbolTable& symTab, SymbolId fbId)
    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
       for (SymbolId paramId : (*it)->params) {
          if (const Symbol* p = symTab.get(paramId)) {
-            ownerByName.emplace(SymbolTable::normalizeKey(p->name), *it);
+            ownerByName.emplace(symTab.normalizeKey(p->name), *it);
          }
       }
       for (SymbolId methodId : (*it)->members) {
          const Symbol* m = symTab.get(methodId);
          if (m != nullptr && m->kind == SymbolKind::Method) {
-            ownerByName.emplace(SymbolTable::normalizeKey(m->name), *it);
+            ownerByName.emplace(symTab.normalizeKey(m->name), *it);
          }
       }
    }
@@ -894,7 +894,7 @@ MemberList collectBlockMembers(const SymbolTable& symTab, SymbolId fbId)
       if (param == nullptr) {
          continue;
       }
-      const std::string key = SymbolTable::normalizeKey(param->name);
+      const std::string key = symTab.normalizeKey(param->name);
       if (!emitted.insert(key).second) {
          continue;
       }
@@ -925,7 +925,7 @@ MemberList collectBlockMembers(const SymbolTable& symTab, SymbolId fbId)
          if (sym == nullptr || sym->kind != SymbolKind::Variable) {
             continue;
          }
-         const std::string key = SymbolTable::normalizeKey(sym->name);
+         const std::string key = symTab.normalizeKey(sym->name);
          if (!emitted.insert(key).second) {
             continue;
          }
@@ -954,7 +954,7 @@ MemberList collectBlockMembers(const SymbolTable& symTab, SymbolId fbId)
          if (method == nullptr || method->kind != SymbolKind::Method) {
             continue;
          }
-         const std::string key = SymbolTable::normalizeKey(method->name);
+         const std::string key = symTab.normalizeKey(method->name);
          if (!emitted.insert(key).second) {
             continue;
          }
@@ -1007,7 +1007,7 @@ SymbolId findInstanceBlock(const SymbolTable& symTab, ScopeId scopeId, const std
    // variable of the same name.
    const Scope* scope = symTab.getScope(scopeId);
    while (scope != nullptr) {
-      auto it = scope->symbols.find(SymbolTable::normalizeKey(name));
+      auto it = scope->symbols.find(symTab.normalizeKey(name));
       if (it != scope->symbols.end()) {
          const Symbol* sym = symTab.get(it->second);
          if (sym != nullptr) {
@@ -1098,7 +1098,7 @@ MemberList collectScopeNames(const SymbolTable& symTab, ScopeId scopeId, bool in
       if (sym.name.empty() || sym.kind == SymbolKind::Program) {
          return; // the POU being edited is not a name to complete inside itself
       }
-      if (!seen.insert(SymbolTable::normalizeKey(sym.name)).second) {
+      if (!seen.insert(symTab.normalizeKey(sym.name)).second) {
          return;
       }
       Suggestion entry;
@@ -1274,7 +1274,7 @@ const Symbol* lookupInScopeChain(const SymbolTable& symTab, ScopeId scopeId, con
 {
    const Scope* scope = symTab.getScope(scopeId);
    while (scope != nullptr) {
-      auto it = scope->symbols.find(SymbolTable::normalizeKey(name));
+      auto it = scope->symbols.find(symTab.normalizeKey(name));
       if (it != scope->symbols.end()) {
          const Symbol* found = symTab.get(it->second);
          if (found != nullptr) {
@@ -1303,7 +1303,7 @@ const Symbol* findMethodInChain(const SymbolTable& symTab, SymbolId fbId, const 
       for (SymbolId memberId : block->members) {
          const Symbol* method = symTab.get(memberId);
          if (method != nullptr && method->kind == SymbolKind::Method &&
-             SymbolTable::normalizeKey(method->name) == SymbolTable::normalizeKey(name)) {
+             symTab.normalizeKey(method->name) == symTab.normalizeKey(name)) {
             if (ownerOut != nullptr) {
                *ownerOut = block;
             }

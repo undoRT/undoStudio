@@ -1285,7 +1285,7 @@ void STApp::invalidateWorkspaceIndex(const std::string& path)
 std::vector<STApp::WorkspaceDeclaration> STApp::findWorkspaceDeclarations(const std::string& name) const
 {
    const_cast<STApp*>(this)->ensureWorkspaceIndex();
-   auto it = m_workspaceDecls.find(st2cpp::semantic::SymbolTable::normalizeKey(name));
+   auto it = m_workspaceDecls.find(st2cpp::semantic::SymbolTable::asciiUpper(name));
    if (it == m_workspaceDecls.end()) {
       return {};
    }
@@ -1375,7 +1375,7 @@ int STApp::columnOfName(const std::vector<std::string>& srcLines, int line, cons
  */
 const Declaration* STApp::findDeclaration(const std::string& name, const std::string& scope) const
 {
-   auto it = m_declarations.find(st2cpp::semantic::SymbolTable::normalizeKey(name));
+   auto it = m_declarations.find(st2cpp::semantic::SymbolTable::asciiUpper(name));
    if (it == m_declarations.end() || it->second.empty()) {
       return nullptr;
    }
@@ -2272,10 +2272,10 @@ void STApp::updateMemberCompletion(const char* id, TextEditor& editor, bool edit
          // in the two places at once is one name.
          std::unordered_set<std::string> taken;
          for (const MemberAccess& candidate : candidates) {
-            taken.insert(st2cpp::semantic::SymbolTable::normalizeKey(candidate.name));
+            taken.insert(st2cpp::semantic::SymbolTable::asciiUpper(candidate.name));
          }
          for (MemberAccess& declared : collectProjectNames(*m_projectRegistry)) {
-            if (taken.insert(st2cpp::semantic::SymbolTable::normalizeKey(declared.name)).second) {
+            if (taken.insert(st2cpp::semantic::SymbolTable::asciiUpper(declared.name)).second) {
                candidates.push_back(std::move(declared));
             }
          }
@@ -3365,7 +3365,7 @@ void STApp::applyPendingJump()
       revealDeclaration(*decl);
       return;
    }
-   auto it = m_declarations.find(st2cpp::semantic::SymbolTable::normalizeKey(name));
+   auto it = m_declarations.find(st2cpp::semantic::SymbolTable::asciiUpper(name));
    if (it == m_declarations.end() || it->second.empty()) {
       return;
    }

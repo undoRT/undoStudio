@@ -25,9 +25,9 @@ static void check(bool ok, const std::string& what) {
 }
 
 static const MemberAccess* findMember(const MemberList& list, const std::string& name) {
-  const std::string want = st2cpp::semantic::SymbolTable::normalizeKey(name);
+  const std::string want = st2cpp::semantic::SymbolTable::asciiUpper(name);
   for (const auto& m : list) {
-    if (st2cpp::semantic::SymbolTable::normalizeKey(m.name) == want) return &m;
+    if (st2cpp::semantic::SymbolTable::asciiUpper(m.name) == want) return &m;
   }
   return nullptr;
 }
@@ -179,7 +179,7 @@ int main() {
     int count = 0;
     const MemberAccess* found = nullptr;
     for (const auto& m : members) {
-      if (st2cpp::semantic::SymbolTable::normalizeKey(m.name) == "COMUNE") {
+      if (st2cpp::semantic::SymbolTable::asciiUpper(m.name) == "COMUNE") {
          ++count;
          found = &m;
       }

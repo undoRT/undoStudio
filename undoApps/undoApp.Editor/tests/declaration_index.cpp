@@ -38,7 +38,7 @@ int main() {
   std::cout << "declaration names: " << idx.size() << "\n";
 
   auto get = [&](const char* n) -> const std::vector<Declaration>* {
-    auto it = idx.find(st2cpp::semantic::SymbolTable::normalizeKey(n));
+    auto it = idx.find(st2cpp::semantic::SymbolTable::asciiUpper(n));
     return it == idx.end() ? nullptr : &it->second;
   };
 
