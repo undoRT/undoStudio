@@ -33,6 +33,9 @@ sudo apt install libgl1-mesa-dev libglu1-mesa-dev freeglut3-dev
 
 # X11, which is what GLFW builds against here
 sudo apt install libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev
+
+# glm, header-only, and a hard requirement: CMake stops if it is missing
+sudo apt install libglm-dev
 ~~~
 
 Everything else is a submodule: GLFW, Dear ImGui, implot, ImGuiColorTextEdit,
