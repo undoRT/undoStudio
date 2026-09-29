@@ -25,6 +25,6 @@ target_link_libraries(undoApp.Demo PRIVATE
 
 set_target_properties(undoApp.Demo PROPERTIES
     PREFIX ""                                             # keep the plugin filename as "undoApp.Demo.so", no "lib" prefix
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugins
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/plugins
     POSITION_INDEPENDENT_CODE ON
 )

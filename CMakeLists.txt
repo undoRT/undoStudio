@@ -17,7 +17,19 @@ option(USE_SYSTEM_GLFW "Use system GLFW instead of bundled" OFF)
 option(ENABLE_IMGUI_DOCKING "Enable ImGui docking support" ON)
 option(USE_TINYFILEDIALOGS "Use tinyfiledialogs for native file dialogs" OFF)
 
+# ============================================
+# Output layout
+# ============================================
+# Fonts, icons and themes are opened by relative path, and the undoApps are
+# looked up in plugins/, so what is needed at run time has to end up beside
+# resources/ rather than buried in the build tree. Intermediates still go to
+# build/, which is what a -B build configure is for.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+# ============================================
 # Include directories
+# ============================================
 include_directories(include)
 
 # Find glm (header-only)

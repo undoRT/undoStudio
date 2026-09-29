@@ -53,6 +53,6 @@ endif()
 
 set_target_properties(undoApp.Terminal PROPERTIES
     PREFIX ""                                             # "undoApp.Terminal.so", no "lib" prefix
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugins
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/plugins
     POSITION_INDEPENDENT_CODE ON
 )
