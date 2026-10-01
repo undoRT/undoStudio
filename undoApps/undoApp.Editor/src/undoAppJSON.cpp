@@ -536,5 +536,26 @@ void JSONApp::closeFile()
    std::cout << "[undoApp.JSON] Closed file" << std::endl;
 }
 
+JSONDocument JSONApp::takeDocument()
+{
+   JSONDocument doc;
+   doc.path = m_currentFilePath;
+   doc.rawText = m_rawJSONString;
+   doc.pretty = m_showPrettyPrint;
+   return doc;
+}
+
+void JSONApp::setDocument(const JSONDocument& doc)
+{
+   // The tree is built from the text, which is the one copy of it. The search box
+   // is not part of the document: it is a way of looking at the tree, not the
+   // file, and it belongs to whoever is looking now rather than to what is open.
+   m_currentFilePath = doc.path;
+   m_showPrettyPrint = doc.pretty;
+   m_jsonSearchFilter.clear();
+   m_jsonSearchActive = false;
+   buildJSONTree(doc.rawText);
+}
+
 } // namespace JSON
 } // namespace undoApp

@@ -90,9 +90,20 @@ void TextApp::openFile(const std::string& path)
 
    m_editor->SetText(content);
    m_currentFilePath = path;
+   // What is on screen is what the file holds, so the tab's unsaved mark goes with
+   // the load rather than waiting for the next edit to contradict it.
+   m_isDirty = false;
    m_outputLines.push_back("Loaded: " + path);
 
    std::cout << "[undoApp.Text] Opened: " << path << std::endl;
+}
+
+void TextApp::renameFileTo(const std::string& path)
+{
+   if (path.empty() || path == m_currentFilePath) {
+      return;
+   }
+   m_currentFilePath = path;
 }
 
 void TextApp::saveFile()
@@ -115,6 +126,10 @@ void TextApp::saveFile()
    }
    file << text;
    file.close();
+   // Written, so the text on screen and the file agree again. Only here, and only
+   // after the file opened: a save that failed leaves the mark where it was, which
+   // is the answer that keeps somebody's changes from looking safe.
+   m_isDirty = false;
    m_outputLines.push_back("Saved: " + m_currentFilePath);
    std::cout << "[undoApp.Text] Saved: " << m_currentFilePath << std::endl;
 }
@@ -122,10 +137,34 @@ void TextApp::saveFile()
 void TextApp::closeFile()
 {
    m_currentFilePath.clear();
+   m_isDirty = false;
+   m_isDirty = false;
    if (m_editor) {
       m_editor->SetText("");
    }
    m_outputLines.push_back("Closed current file");
+}
+
+void TextApp::setDocument(const std::string& path, const std::string& text)
+{
+   if (!m_editor) {
+      setupEditor();
+   }
+   m_currentFilePath = path;
+   // SetText marks the editor as changed, which is our own doing here: the text
+   // came from this editor on the way out and is going back into it. The mark is
+   // therefore set from what the editor already knew, not from the flag the load
+   // itself just raised — a stashed document that was clean comes back clean.
+   if (m_editor) {
+      m_editor->SetText(text);
+   }
+   m_windowTitle = path.empty() ? "Editor" : fs::path(path).filename().string().c_str();
+}
+
+void TextApp::document(std::string& path, std::string& text) const
+{
+   path = m_currentFilePath;
+   text = m_editor ? m_editor->GetText() : std::string();
 }
 
 // ============================================================================
@@ -197,6 +236,11 @@ void TextApp::renderEditorPanel()
 
    if (m_editor) {
       m_editor->Render("##textEditor");
+      // Sampled after the render, because the editor raises its flag while it draws
+      // and clears it at the start of the next one.
+      if (m_editor->IsTextChanged()) {
+         m_isDirty = true;
+      }
    }
 
    ImGui::End();

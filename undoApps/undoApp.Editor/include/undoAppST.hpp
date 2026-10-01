@@ -25,6 +25,7 @@
 #include "parser/Parser.h"
 #include "ast/AST.h"
 #include "undoAppSTSemantic.hpp"
+#include "undoAppSTOutput.hpp"
 #include "undoAppSTSnippet.hpp"
 #include "semantic/SemanticAnalyzer.h"
 #include "semantic/LibraryDescriptorBuilder.h"
@@ -86,6 +87,32 @@ struct MethodEditors
 };
 
 /**
+ * @brief One open ST file, held whole so it can be put back
+ *
+ * Everything openFile() reads out of the file, and nothing that can be worked out
+ * again from it: the AST, the semantic analysis and the source map are all
+ * derived, and keeping them would mean a snapshot that is stale the moment a
+ * character is typed.
+ *
+ * The editor contents are the point of it. A tab that is still open has to come
+ * back showing what was in it, and reading the file off disk would give back the
+ * version on disk rather than the one being edited, which is the unsaved half of
+ * every change made since it was opened.
+ */
+struct STDocument
+{
+   std::string path;                    ///< Absolute path, where a later save goes
+   POUType pouType = POUType::Program;  ///< PROGRAM, FUNCTION_BLOCK or FUNCTION
+   std::string pouName;                 ///< Name of the POU
+   std::string functionReturnType;      ///< Return type of a FUNCTION
+   std::string pouVariablesText;        ///< The POU's VAR sections
+   std::string pouBodyText;             ///< The POU's body
+   std::vector<MethodData> methods;     ///< Its methods, with their texts
+   float splitterPos = 0.5f;            ///< Where the two panes were divided
+   std::string activeTab;               ///< Which method tab was showing, empty for the POU
+};
+
+/**
  * @brief One editor-backed block of the generated ST file
  *
  * Lines are 1-based and inclusive, matching the line numbers st2cpp reports in
@@ -98,29 +125,6 @@ struct SourceSegment
    int fullEnd = 0;          ///< Last line of the block (inclusive)
    bool isVariables = false; ///< True for a VAR* block, false for a body block
    std::string methodName;   ///< Empty for the POU itself, else the owning METHOD
-};
-
-/**
- * @brief Severity of a line in the Output panel
- */
-enum class OutSeverity
-{
-   Info,    ///< Debug/detail output
-   Success, ///< Confirmation that a step succeeded
-   Warning, ///< Reported by the analyzer but not blocking
-   Error    ///< Blocks code generation
-};
-
-/**
- * @brief One tagged line in the Output panel
- *
- * Severity is carried as data rather than recovered from the text: matching on
- * substrings silently missed lowercase variants such as "errors found".
- */
-struct OutputLine
-{
-   OutSeverity severity = OutSeverity::Info;
-   std::string text;
 };
 
 /**
@@ -188,8 +192,26 @@ public:
    /// @brief Move sourcePath into destDir
    void moveFile(const std::string& sourcePath, const std::string& destDir);
 
+   /// @brief Record that the file this editor holds has moved on disk
+   ///
+   /// Only the path, never the panes: the editor is still showing the same file, and
+   /// without this a save after a rename writes a second copy at the old path. The
+   /// workspace index is invalidated for both paths, because it is keyed by path and
+   /// the entry that described the file now answers to the other one.
+   /// @param path Where the file now is
+   void renameFileTo(const std::string& path);
+
    /// @brief Save the currently open file
    void saveCurrentFile();
+
+   /**
+    * @brief Whether the file has edits that are not on disk
+    *
+    * Kept here rather than asked of the editors, because the ST file is not one
+    * buffer: it is the panes, and what they hold together is not what any single
+    * one of them can answer.
+    */
+   bool hasUnsavedChanges() const { return m_isDirty; }
 
    /// @brief Open a file for editing (with method extraction)
    void openFile(const std::string& path);
@@ -243,6 +265,29 @@ public:
 
    /// @brief Move the editor to a generated-file line, switching METHOD tabs
    void revealGeneratedLine(int fullLine, int col, int tokenLength = 0);
+
+   /**
+    * @brief Take the open file out whole, to be put back later
+    *
+    * The other end of switching tabs. Everything the editors hold is read out,
+    * including unsaved changes, because that is the only copy of them: reading the
+    * file off disk instead would hand back the saved version and lose the rest.
+    *
+    * The AST, the semantic analysis and the source map are left out on purpose.
+    * They are derived from the text and are rebuilt when the file is shown again,
+    * so keeping them would mean carrying a second, stale copy of the truth.
+    */
+   STDocument takeDocument();
+
+   /**
+    * @brief Show a file taken out by takeDocument()
+    * @param doc The file and its contents
+    *
+    * Refuses a document that is not a POU, rather than showing an empty editor:
+    * a file that parses as nothing is a file worth looking at, and taking its
+    * content on the way in is what it is worth looking at for.
+    */
+   void setDocument(const STDocument& doc);
 
    /// @brief Switch to a METHOD tab, materializing it if needed
    bool revealMethodTab(const std::string& methodName);
@@ -419,6 +464,25 @@ private:
    std::string m_currentFilePath;          ///< Path of the currently open file
    std::string m_currentFileContent;       ///< Content of the currently open file
    std::vector<OutputLine> m_outputLines; ///< Lines to display in the Output panel
+   /// Whether the Output panel dumps the generated ST in full. Off by default: it
+   /// is hundreds of lines and it buried the diagnostics under it.
+   bool m_showGeneratedDump = false;
+   /// Which severities the Output panel shows. A member, not a local of
+   /// renderOutputPanel(), because a local is rebuilt on every frame and the
+   /// checkbox that writes it would be writing into a copy that dies at the end of
+   /// the frame: the box would flip, the panel would ignore it, and nothing would
+   /// say so.
+   OutputFilter m_outputFilter;
+   /// What the Output panel is filtered by, as the user typed it. A member, and a
+   /// fixed array rather than a std::string because ImGui 1.92.9's InputText takes
+   /// a char buffer and this tree does not link imgui_stdlib, which is the wrapper
+   /// that takes a std::string. A function-local static, which is what this was,
+   /// also held its text and so appeared to work: it survived because it was static,
+   /// not because the panel owned it, so a query typed for one project was still
+   /// filtering the next one's log to nothing.
+   char m_outputSearch[256] = {};
+   /// Last line count the Output panel drew, so it can tell new output from old.
+   size_t m_outputLinesShown = 0;
 
    std::unique_ptr<TextEditor> m_variablesEditor; ///< Editor for the Variables section
    std::unique_ptr<TextEditor> m_bodyEditor;      ///< Editor for the Body section
@@ -737,6 +801,11 @@ private:
    // ============================================================================
 
    bool m_showDeleteConfirmation = false; ///< True if delete confirmation popup is visible
+
+   /// Fallback workspace picker, for when neither tinyfiledialogs nor zenity is
+   /// available. A modal of the app's own, so it has to be drawn by the panel.
+   bool m_showWorkspaceDialog = false;
+   char m_workspaceDialogPath[1024] = {};
    std::string m_deletePendingPath;       ///< Path of the file/folder pending deletion
 
    // ============================================================================

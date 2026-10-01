@@ -50,6 +50,13 @@ public:
    /// @brief Open a file and load it into the editor
    void openFile(const std::string& path);
 
+   /// @brief Record that the file this editor holds has moved on disk
+   ///
+   /// Only the path, never the text: the editor is still showing the same file, and
+   /// without this a save after a rename writes a second copy at the old path.
+   /// @param path Where the file now is
+   void renameFileTo(const std::string& path);
+
    /// @brief Write the editor's current text back to m_currentFilePath
    void saveFile();
 
@@ -61,6 +68,32 @@ public:
 
    /// @brief Render the output panel
    void renderOutputPanel();
+
+   /**
+    * @brief Put what is on screen back into an editor, under a new file name
+    *
+    * The two ends of switching tabs: a backend holds one file, so several open
+    * means taking the text out before the next is loaded and putting it back when
+    * this one is shown again. The path comes separately from the text because it
+    * is where a later save goes, and re-reading it from disk would lose anything
+    * not written yet.
+    *
+    * @param path The file the text belongs to
+    * @param text The text as it is now, unsaved changes included
+    */
+   void setDocument(const std::string& path, const std::string& text);
+
+   /// @brief The editor's text and the file it belongs to
+   void document(std::string& path, std::string& text) const;
+
+   /**
+    * @brief Whether the text on screen differs from the file on disk
+    *
+    * Sticky for the same reason as the text backend's: the editor's own flag is
+    * cleared by the next Render(), and an answer that expires cannot be what a
+    * tab's unsaved mark is drawn from.
+    */
+   bool hasUnsavedChanges() const { return m_isDirty; }
 
 private:
    /// @brief (Re)create the TextEditor widget with C++ language definition
@@ -74,6 +107,7 @@ private:
    std::string m_currentFilePath;
    std::unique_ptr<TextEditor> m_editor;
    std::vector<std::string> m_outputLines;
+   bool m_isDirty = false;  ///< Editor text differs from the file on disk
 };
 
 } // namespace undoApp

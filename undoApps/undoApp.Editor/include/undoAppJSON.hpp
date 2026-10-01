@@ -38,6 +38,21 @@ struct JSONNode
 };
 
 /**
+ * @brief One open JSON file, held while another file is in the viewer
+ *
+ * The raw text rather than the parsed tree: the tree is what the viewer draws and
+ * is rebuilt from the text when the file is shown again, so carrying it would mean
+ * a second copy of the truth that has to be kept in step with the text.
+ */
+struct JSONDocument
+{
+   std::string path;        ///< Absolute path, where a later save goes
+   std::string rawText;     ///< The file as it was read
+   std::string prettyPrint; ///< The formatted text, if pretty printing is on
+   bool pretty = false;
+};
+
+/**
  * @brief Main application class for the JSON Viewer plugin
  *
  * Implements a JSON file viewer with tree visualization, search,
@@ -70,6 +85,13 @@ public:
 
    /// @brief Render the JSON Viewer panel
    void renderJSONPanel();
+
+   /// @brief Take the open file out whole, to be put back later
+   JSONDocument takeDocument();
+
+   /// @brief Show a file taken out by takeDocument()
+   /// @param doc The file and its text
+   void setDocument(const JSONDocument& doc);
 
    // ============================================================================
    // JSON tree building and rendering

@@ -17,6 +17,7 @@
 #include "undoStudio/ui/ImGuiManager.hpp"
 #include "undoStudio/core/Application.hpp"
 #include "undoStudio/core/ProjectManager.hpp"
+#include "undoStudio/core/RecentFiles.hpp"
 
 #include <imgui.h>
 
@@ -43,6 +44,36 @@ namespace Editor {
 // ============================================================================
 // Static Helper Functions
 // ============================================================================
+
+namespace {
+
+/**
+ * @brief Move a stashed document from one path to another
+ *
+ * Both places a stash holds the path are updated, not just the key: the key is how
+ * the document is found, and the path inside it is what the backend is handed when
+ * the document comes back, so a rename that moved only the key would still write to
+ * the old path the next time the file was opened.
+ *
+ * @tparam Stashes A map of path to a document type carrying a path of its own
+ * @param stashes The stash map to re-key
+ * @param oldPath The key the document is filed under
+ * @param newPath Where the file now is
+ */
+template <typename Stashes>
+void rekeyStash(Stashes& stashes, const std::string& oldPath, const std::string& newPath)
+{
+   const auto it = stashes.find(oldPath);
+   if (it == stashes.end()) {
+      return;
+   }
+   typename Stashes::mapped_type moved = std::move(it->second);
+   stashes.erase(it);
+   moved.path = newPath;
+   stashes.emplace(newPath, std::move(moved));
+}
+
+} // namespace
 
 /**
  * @brief Lowercase a string in-place
@@ -165,43 +196,341 @@ void EditorApp::registerPanels()
 // File routing
 // ============================================================================
 
-void EditorApp::openFile(const std::string& path)
+void EditorApp::openFile(const std::string& path, bool pin)
 {
    if (path.empty()) {
       std::cerr << "[undoApp.Editor] openFile called with empty path" << std::endl;
       return;
    }
-   // Close any previously open file in ALL backends
-   // This ensures clean state when switching between file types
-   ST::STApp::getInstance().closeFile();
-   JSON::JSONApp::getInstance().closeFile();
-   TextApp::getInstance().closeFile();
-   CppApp::getInstance().closeFile();
+
+   // Every route into the editor goes through here, so this is the one place that
+   // knows a file was looked at. Recorded whether or not it was already open: the
+   // list is ordered by when a file was last looked at, and a user who switched
+   // back to a file is looking at it however long it had been sitting there.
+   undoStudio::core::RecentFiles::getInstance().rememberFile(path);
 
    // Decide which backend to dispatch to based on the file extension
    std::string ext = toLower(fs::path(path).extension().string());
 
+   DocKind kind = DocKind::Text;
    if (ext == ".st") {
-      TextApp::getInstance().closeFile();
-      ST::STApp::getInstance().openFile(path);
-      m_currentFileType = FileType::ST;
+      kind = DocKind::ST;
    } else if (ext == ".json") {
-      TextApp::getInstance().closeFile();
-      JSON::JSONApp::getInstance().loadJSONFile(path);
-      m_currentFileType = FileType::JSON;
+      kind = DocKind::JSON;
    } else if (ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".cxx" || ext == ".h" || ext == ".hpp" || ext == ".hh"
               || ext == ".hxx") {
-      CppApp::getInstance().openFile(path);
-      m_currentFileType = FileType::Cpp;
-   } else {
-      // Plain text: clear any state in the TextApp and load the file.
-      TextApp::getInstance().openFile(path);
-      m_currentFileType = FileType::Text;
+      kind = DocKind::Cpp;
+   }
+
+   openDocument(path, kind, pin);
+}
+
+void EditorApp::openDocument(const std::string& path, DocKind kind, bool pin)
+{
+   // Already open: bring it forward rather than loading it a second time. The tabs
+   // are where someone looks to see what is open, and a file in two of them makes
+   // that a worse answer than no tabs at all.
+   if (m_open.isOpen(path)) {
+      switchToTab(path);
+      // Pinned after the switch rather than instead of it, because a deliberate
+      // re-open of something already in the preview slot should keep it there.
+      if (pin) {
+         m_open.pin(path);
+      }
+      return;
+   }
+
+   // Whatever is on screen goes back into its own tab before the next file lands
+   // in the editor that is currently holding it.
+   //
+   // The stash is taken first, but a preview that open() is about to replace is
+   // not kept: the rule that decides whether it survives lives in the model, and
+   // this only puts its text somewhere in case it does. A preview with unsaved
+   // changes is pinned by the model, not here, so that the rule has one home.
+   stashActiveDocument(/*pin=*/false);
+
+   const OpenOutcome outcome = m_open.open(path, kind);
+   if (!outcome.alreadyOpen) {
+      m_open.activate(path);
+      loadActiveDocument(path);
+   }
+   if (pin) {
+      m_open.pin(path);
+   }
+
+   std::cout << "[undoApp.Editor] Opened " << path << " as " << fileTypeToString(m_currentFileType) << std::endl;
+}
+
+// ============================================================================
+// Open documents
+// ============================================================================
+
+DocKind EditorApp::docKindFor(FileType type)
+{
+   switch (type) {
+   case FileType::ST:
+      return DocKind::ST;
+   case FileType::JSON:
+      return DocKind::JSON;
+   case FileType::Text:
+      return DocKind::Text;
+   case FileType::Cpp:
+      return DocKind::Cpp;
+   default:
+      return DocKind::None;
+   }
+}
+
+FileType EditorApp::fileTypeFor(DocKind kind)
+{
+   switch (kind) {
+   case DocKind::ST:
+      return FileType::ST;
+   case DocKind::JSON:
+      return FileType::JSON;
+   case DocKind::Text:
+      return FileType::Text;
+   case DocKind::Cpp:
+      return FileType::Cpp;
+   default:
+      return FileType::None;
+   }
+}
+
+/// Where a document goes while another one is in its editor.
+void EditorApp::stashActiveDocument(bool keep)
+{
+   const std::string active = m_open.active();
+   if (active.empty()) {
+      return;
+   }
+   const size_t index = documentIndex(active);
+   if (index == kNoIndex) {
+      return;
+   }
+   switch (m_open.documents()[index].kind) {
+   case DocKind::ST:
+      m_stStashes[active] = ST::STApp::getInstance().takeDocument();
+      break;
+   case DocKind::Text: {
+      StashedText out;
+      TextApp::getInstance().document(out.path, out.text);
+      m_textStashes[active] = std::move(out);
+      break;
+   }
+   case DocKind::Cpp: {
+      StashedText out;
+      CppApp::getInstance().document(out.path, out.text);
+      m_cppStashes[active] = std::move(out);
+      break;
+   }
+   case DocKind::JSON:
+      m_jsonStashes[active] = JSON::JSONApp::getInstance().takeDocument();
+      break;
+   default:
+      break;
+   }
+   // Keeping the tab is not the same question as whether it has unsaved changes,
+   // and conflating them is what put a mark on every file that was ever looked at
+   // twice: switching tabs used to mean "there are changes here", so every tab got
+   // an asterisk that nothing ever took off. The mark comes from the editors, every
+   // frame, in refreshDirtyState().
+   if (keep) {
+      m_open.pin(active);
+   }
+}
+
+void EditorApp::refreshDirtyState()
+{
+   // Only the document on screen is asked. The rest are stashes -- their text lives
+   // in a map, not in an editor -- so whatever they were when they were put there is
+   // the truth about them until they come back.
+   const std::string active = m_open.active();
+   if (active.empty()) {
+      return;
+   }
+   const size_t index = documentIndex(active);
+   if (index == kNoIndex) {
+      return;
+   }
+
+   bool changed = false;
+   switch (m_open.documents()[index].kind) {
+   case DocKind::ST:
+      changed = ST::STApp::getInstance().hasUnsavedChanges();
+      break;
+   case DocKind::Text:
+      changed = TextApp::getInstance().hasUnsavedChanges();
+      break;
+   case DocKind::Cpp:
+      changed = CppApp::getInstance().hasUnsavedChanges();
+      break;
+   case DocKind::JSON:
+      // A JSON file is shown as a tree with no text of its own to edit, so there is
+      // nothing here that could differ from the file.
+      changed = false;
+      break;
+   default:
+      break;
+   }
+
+   // setDirty() pins a document the moment it gains changes, which is what stops a
+   // preview holding somebody's typing from being reused by the next browse.
+   // Setting
+   // it to false does not unpin: a tab that was pinned for having work keeps its
+   // place after the work is saved, which is what a tab somebody opened on purpose
+   // should do.
+   m_open.setDirty(active, changed);
+}
+
+void EditorApp::saveActiveDocument()
+{
+   // One place that knows how to write each kind, because the key that reaches the
+   // editor panel is not the key that reaches the ST editor's own panel, and a save
+   // that only handled what the panel under the keyboard could dispatch left .st
+   // files unsaveable from it.
+   switch (m_currentFileType) {
+   case FileType::ST:
+      ST::STApp::getInstance().saveCurrentFile();
+      break;
+   case FileType::Cpp:
+      CppApp::getInstance().saveFile();
+      break;
+   case FileType::Text:
+      TextApp::getInstance().saveFile();
+      break;
+   default:
+      // JSON has no editor text to write back, and nothing open is not an error.
+      return;
+   }
+   // The backends drop their own flag once the write went through; this is the same
+   // answer reached from here, so the tab stops claiming otherwise without waiting
+   // for the next frame.
+   refreshDirtyState();
+}
+
+void EditorApp::loadActiveDocument(const std::string& path)
+{
+   if (path.empty()) {
+      m_currentFilePath.clear();
+      m_currentFileType = FileType::None;
+      return;
+   }
+   const size_t index = documentIndex(path);
+   if (index == kNoIndex) {
+      m_currentFilePath.clear();
+      m_currentFileType = FileType::None;
+      return;
    }
 
    m_currentFilePath = path;
-   std::cout << "[undoApp.Editor] Opened " << path << " as " << fileTypeToString(m_currentFileType) << std::endl;
+   m_currentFileType = fileTypeFor(m_open.documents()[index].kind);
+
+   switch (m_open.documents()[index].kind) {
+   case DocKind::ST: {
+      ST::STApp& st = ST::STApp::getInstance();
+      const auto it = m_stStashes.find(path);
+      if (it != m_stStashes.end()) {
+         // Back from a stash: the editors already hold this file's text.
+         st.setDocument(it->second);
+      } else {
+         st.openFile(path);
+      }
+      break;
+   }
+   case DocKind::Text: {
+      const auto it = m_textStashes.find(path);
+      if (it != m_textStashes.end()) {
+         TextApp::getInstance().setDocument(it->second.path, it->second.text);
+      } else {
+         TextApp::getInstance().openFile(path);
+      }
+      break;
+   }
+   case DocKind::Cpp: {
+      const auto it = m_cppStashes.find(path);
+      if (it != m_cppStashes.end()) {
+         CppApp::getInstance().setDocument(it->second.path, it->second.text);
+      } else {
+         CppApp::getInstance().openFile(path);
+      }
+      break;
+   }
+   case DocKind::JSON: {
+      const auto it = m_jsonStashes.find(path);
+      if (it != m_jsonStashes.end()) {
+         JSON::JSONApp::getInstance().setDocument(it->second);
+      } else {
+         JSON::JSONApp::getInstance().loadJSONFile(path);
+      }
+      break;
+   }
+   default:
+      break;
+   }
 }
+
+void EditorApp::switchToTab(const std::string& path)
+{
+   if (path == m_open.active()) {
+      return;
+   }
+   // Switching tabs is not browsing: the tab being left is not a preview about to
+   // be reused, so it keeps whatever it holds and its unsaved mark stays.
+   stashActiveDocument(/*pin=*/true);
+   m_open.activate(path);
+   loadActiveDocument(path);
+}
+
+void EditorApp::closeTab(const std::string& path)
+{
+   if (!m_open.isOpen(path)) {
+      return;
+   }
+   const bool wasActive = (m_open.active() == path);
+   const std::string next = wasActive ? neighbourAfterClose(path) : std::string();
+
+   dropStashes(path);
+   m_open.close(path);
+
+   if (wasActive) {
+      if (next.empty()) {
+         m_open.activate("");
+         m_currentFilePath.clear();
+         m_currentFileType = FileType::None;
+      } else {
+         m_open.activate(next);
+         loadActiveDocument(next);
+      }
+   }
+}
+
+size_t EditorApp::documentIndex(const std::string& path) const
+{
+   if (path.empty()) {
+      return kNoIndex;
+   }
+   for (size_t i = 0; i < m_open.documents().size(); ++i) {
+      if (m_open.documents()[i].path == path) {
+         return i;
+      }
+   }
+   return kNoIndex;
+}
+
+std::string EditorApp::neighbourAfterClose(const std::string& path) const
+{
+   for (size_t i = 0; i < m_open.documents().size(); ++i) {
+      if (m_open.documents()[i].path == path) {
+         if (m_open.documents().size() == 1) {
+            return std::string();
+         }
+         return m_open.documents()[(i > 0) ? i - 1 : 0].path;
+      }
+   }
+   return std::string();
+}
+
 
 void EditorApp::closeFile()
 {
@@ -211,6 +540,127 @@ void EditorApp::closeFile()
     CppApp::getInstance().closeFile();
     m_currentFileType = FileType::None;
     m_currentFilePath.clear();
+}
+
+/// @brief Forget everything stashed for a path
+///
+/// An empty path means every stash, which is the only way to say "nothing is open"
+/// to a set of maps keyed by path.
+void EditorApp::dropStashes(const std::string& path)
+{
+   if (path.empty()) {
+      m_stStashes.clear();
+      m_textStashes.clear();
+      m_cppStashes.clear();
+      m_jsonStashes.clear();
+      return;
+   }
+   m_stStashes.erase(path);
+   m_textStashes.erase(path);
+   m_cppStashes.erase(path);
+   m_jsonStashes.erase(path);
+}
+
+/// @brief Close every tab under a path, including the files inside a folder
+///
+/// Deleting a folder takes the files in it, and a tab for a file that is gone is a
+/// row that offers to open something that cannot be opened.
+void EditorApp::closeDocumentsUnder(const std::string& path)
+{
+   if (path.empty()) {
+      return;
+   }
+   const std::string prefix = path + "/";
+   std::vector<std::string> gone;
+   for (const OpenDocument& doc : m_open.documents()) {
+      if (doc.path == path || doc.path.rfind(prefix, 0) == 0) {
+         gone.push_back(doc.path);
+      }
+   }
+   // closeTab rather than a close per path, because it is the one that answers what to
+   // leave on screen: the model moves its active document to a neighbour, and
+   // something has to load it or the bar claims a file is open that the editors are
+   // not holding.
+   for (const std::string& doc : gone) {
+      closeTab(doc);
+   }
+}
+
+/// @brief Follow a file that was renamed or moved on disk
+///
+/// Everything that holds a path has to be told, and it is this one function that
+/// knows the list: the tab and its stash are keyed by path, the editor on screen
+/// saves to the path it was given, and the recent files list points at a file that
+/// is no longer there. Each of them left behind is not a stale label but a second
+/// file: a save after a rename writes a copy where the file used to be.
+void EditorApp::followPathChange(const std::string& oldPath, const std::string& newPath)
+{
+   if (oldPath.empty() || newPath.empty() || oldPath == newPath) {
+      return;
+   }
+
+   // A folder carries the files inside it, so renaming one moves their tabs too: a
+   // tab whose path no longer resolves is a row offering to open a file that is not
+   // there, and a save after the move writes a copy at the old path.
+   const std::string prefix = oldPath + "/";
+   std::vector<std::pair<std::string, std::string>> moved;
+   for (const OpenDocument& doc : m_open.documents()) {
+      if (doc.path == oldPath) {
+         moved.emplace_back(doc.path, newPath);
+      } else if (doc.path.rfind(prefix, 0) == 0) {
+         moved.emplace_back(doc.path, newPath + doc.path.substr(oldPath.size()));
+      }
+   }
+
+   for (const auto& fromTo : moved) {
+      const std::string& from = fromTo.first;
+      const std::string& to = fromTo.second;
+
+      undoStudio::core::RecentFiles::getInstance().renameFile(from, to);
+
+      const size_t index = documentIndex(from);
+      if (index == kNoIndex) {
+         continue;
+      }
+      const DocKind kind = m_open.documents()[index].kind;
+      const bool wasActive = (m_open.active() == from);
+
+      // The editor on screen saves to the path it was given, so it is told before
+      // anything else: this is the one that would write a second file.
+      switch (kind) {
+      case DocKind::ST:
+         if (wasActive) {
+            ST::STApp::getInstance().renameFileTo(to);
+         }
+         break;
+      case DocKind::Text:
+         if (wasActive) {
+            TextApp::getInstance().renameFileTo(to);
+         }
+         break;
+      case DocKind::Cpp:
+         if (wasActive) {
+            CppApp::getInstance().renameFileTo(to);
+         }
+         break;
+      case DocKind::JSON:
+         // No text to write back, so nothing saves to the old path.
+         break;
+      default:
+         break;
+      }
+
+      // The stashes are keyed by path as well, and each document carries the path
+      // inside it: both are the file, so both move.
+      rekeyStash(m_stStashes, from, to);
+      rekeyStash(m_textStashes, from, to);
+      rekeyStash(m_cppStashes, from, to);
+      rekeyStash(m_jsonStashes, from, to);
+
+      if (m_open.rename(from, to) && wasActive) {
+         m_currentFilePath = to;
+      }
+   }
 }
 
 // ============================================================================
@@ -273,6 +723,14 @@ void EditorApp::closeProject()
    m_workspacePath.clear();
    m_rootNode = FileNode{};
    closeFile();
+
+   // The tabs go with the project. They used to be left behind: the next project
+   // opened showed the previous one's files in the bar, and clicking one of them asked
+   // a backend for a file that was not there any more. closeFile() alone cannot do
+   // this, because it also means "the file on screen is gone", where the other tabs
+   // have to stay.
+   dropStashes(std::string());
+   m_open.closeAll();
 }
 
 void EditorApp::refreshFileTree()
@@ -291,17 +749,27 @@ void EditorApp::openFileAsText(const std::string& path)
 
    std::cout << "[undoApp.Editor] Opening JSON as text: " << path << std::endl;
 
-   // Close all backends first
-   ST::STApp::getInstance().closeFile();
-   JSON::JSONApp::getInstance().closeFile();
-   TextApp::getInstance().closeFile();
+   // A file that is already open with another backend is one file, and it gets one
+   // tab: the tab bar answers "what is open", and a second row for the same path is
+   // a worse answer than the same row now holding the text. Its stash goes with it,
+   // because it was stashed under the backend that is being dropped and its text is
+   // the file, which is on disk either way.
+   const size_t index = documentIndex(path);
+   if (index != kNoIndex && m_open.documents()[index].kind != DocKind::Text) {
+      const bool wasActive = (m_open.active() == path);
+      dropStashes(path);
+      m_open.close(path);
+      if (wasActive) {
+         // Nothing is on screen now, and openDocument below is what puts the text
+         // there. Leaving the JSON backend loaded would leave two of them holding one
+         // file, and only one of them is ever drawn.
+         JSON::JSONApp::getInstance().closeFile();
+         m_currentFilePath.clear();
+         m_currentFileType = FileType::None;
+      }
+   }
 
-   // Force open as text using TextApp
-   TextApp::getInstance().openFile(path);
-   m_currentFileType = FileType::Text;
-   m_currentFilePath = path;
-
-   std::cout << "[undoApp.Editor] Opened JSON as text: " << path << std::endl;
+   openDocument(path, DocKind::Text, /*pin=*/true);
 }
 
 void EditorApp::buildFileTree(FileNode& node, const std::string& rootPath)
@@ -396,7 +864,7 @@ void EditorApp::createNewFile(const std::string& parentPath, const std::string& 
       file << content.str();
       file.close();
       std::cout << "[undoApp.Editor] Created file: " << newPath.string() << std::endl;
-      openFile(newPath.string());
+      openFile(newPath.string(), /*pin=*/true);
       refreshFileTree();
       expandToPath(m_rootNode, parentPath);
    } else {
@@ -416,9 +884,13 @@ void EditorApp::createNewFolder(const std::string& parentPath, const std::string
 
 void EditorApp::deleteFile(const std::string& path)
 {
+   // Only the flag is set here; the panel that owns the modal is what opens it.
+   // OpenPopup hashes its id against the current ID stack and this is reached from
+   // renderFileTree, where that stack is deeper than where the modal is drawn, so
+   // the two ids would not match. An entry with no matching Begin also stays on
+   // ImGui's open stack for good and swallows every Escape pressed afterwards.
    m_deletePendingPath = path;
    m_showDeleteConfirmation = true;
-   ImGui::OpenPopup("Delete Confirmation");
 }
 
 void EditorApp::renameFile(const std::string& oldPath, const std::string& newName)
@@ -431,9 +903,7 @@ void EditorApp::renameFile(const std::string& oldPath, const std::string& newNam
          fs::rename(oldP, newP);
          std::cout << "[undoApp.Editor] Renamed: " << oldPath << " -> " << newP.string() << std::endl;
 
-         if (m_currentFilePath == oldPath) {
-            m_currentFilePath = newP.string();
-         }
+         followPathChange(oldPath, newP.string());
          refreshFileTree();
       }
    } catch (const std::exception& e) {
@@ -451,9 +921,7 @@ void EditorApp::moveFile(const std::string& sourcePath, const std::string& destD
          fs::rename(src, dst);
          std::cout << "[undoApp.Editor] Moved: " << sourcePath << " -> " << dst.string() << std::endl;
 
-         if (m_currentFilePath == sourcePath) {
-            m_currentFilePath = dst.string();
-         }
+         followPathChange(sourcePath, dst.string());
          refreshFileTree();
       }
    } catch (const std::exception& e) {
@@ -489,14 +957,16 @@ void EditorApp::openWorkspaceDialog()
       }
    }
 
-   static bool showWorkspaceDialog = true;
-   static char workspacePath[1024] = "";
-
-   if (!m_workspacePath.empty()) {
-      strncpy(workspacePath, m_workspacePath.c_str(), sizeof(workspacePath) - 1);
-   }
-
-   ImGui::OpenPopup("Select Workspace");
+   // zenity is not installed, so there is no dialog to show. Ask for the path
+   // instead, in a modal of its own.
+   //
+   // This used to call OpenPopup("Select Workspace") and nothing else, with no
+   // Begin anywhere in the app to match it: the popup was never drawn, and the
+   // entry it left on ImGui's open stack stayed there for the rest of the session,
+   // swallowing every Escape pressed afterwards.
+   m_showWorkspaceDialog = true;
+   strncpy(m_workspaceDialogPath, m_workspacePath.c_str(), sizeof(m_workspaceDialogPath) - 1);
+   m_workspaceDialogPath[sizeof(m_workspaceDialogPath) - 1] = '\0';
 #endif
 }
 
@@ -519,7 +989,7 @@ void EditorApp::createNewGenericFile(const std::string& parentPath, const std::s
    std::cout << "[undoApp.Editor] Created generic file: " << newPath.string() << std::endl;
 
    // Open the current file with the appropriate backend (based on the extension)
-   openFile(newPath.string());
+   openFile(newPath.string(), /*pin=*/true);
    refreshFileTree();
 }
 
@@ -541,6 +1011,22 @@ void EditorApp::renderWorkspacePanel()
          if (const std::string* path = imguiManager.consumeOpenProjectRequest(requested)) {
             openProject(*path);
          }
+      }
+
+      // A file named on the command line or dropped onto the window. It is
+      // drained one at a time rather than taken in a batch, so a drop of several
+      // opens them in the order they were given and each one's errors are reported
+      // on its own: a drop of a dozen files where the ninth is not readable says
+      // so, instead of the whole drop failing together.
+      while (true) {
+         std::string requestedFile;
+         const std::string* path = imguiManager.consumeOpenFileRequest(requestedFile);
+         if (path == nullptr) {
+            break;
+         }
+         // Asked for by name, so it keeps the tab. A file picked out of the recent list, or
+         // dropped on the window, is not browsing past it.
+         openFile(*path, /*pin=*/true);
       }
 
       // -----------------------------------------------------------------------
@@ -983,9 +1469,7 @@ void EditorApp::renderWorkspacePanel()
             } else {
                fs::remove(m_deletePendingPath);
             }
-            if (m_currentFilePath == m_deletePendingPath) {
-               closeFile();
-            }
+            closeDocumentsUnder(m_deletePendingPath);
             refreshFileTree();
          } catch (const std::exception& e) {
             std::cerr << "[undoApp.Editor] Delete failed: " << e.what() << std::endl;
@@ -998,6 +1482,34 @@ void EditorApp::renderWorkspacePanel()
       if (ImGui::Button("Cancel")) {
          m_showDeleteConfirmation = false;
          m_deletePendingPath.clear();
+         ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndPopup();
+   }
+
+   // --- Workspace picker (only when there is no native dialog to fall back on) --
+   if (m_showWorkspaceDialog) {
+      ImGui::OpenPopup("Select Workspace");
+   }
+   if (ImGui::BeginPopupModal("Select Workspace", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+      ImGui::Text("Neither tinyfiledialogs nor zenity is available.");
+      ImGui::Text("Enter the path of the workspace folder:");
+      ImGui::InputText("##workspacePath", m_workspaceDialogPath, sizeof(m_workspaceDialogPath));
+      if (m_workspaceDialogPath[0] == '\0') {
+         ImGui::TextDisabled("No folder chosen.");
+      } else if (!fs::is_directory(m_workspaceDialogPath)) {
+         ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "Not a folder.");
+      }
+      ImGui::BeginDisabled(m_workspaceDialogPath[0] == '\0' || !fs::is_directory(m_workspaceDialogPath));
+      if (ImGui::Button("Open")) {
+         loadWorkspace(m_workspaceDialogPath);
+         m_showWorkspaceDialog = false;
+         ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndDisabled();
+      ImGui::SameLine();
+      if (ImGui::Button("Cancel")) {
+         m_showWorkspaceDialog = false;
          ImGui::CloseCurrentPopup();
       }
       ImGui::EndPopup();
@@ -1205,7 +1717,11 @@ void EditorApp::renderFileTree(FileNode& node)
       ImGui::PopStyleColor();
 
       if (ImGui::IsItemClicked(0)) {
-         openFile(node.path);
+         // A click keeps its tab. It did not used to: the click opened a preview and
+         // the next one took it away, which reads as the editor losing files — the
+         // file being read disappeared from the bar the moment another was opened,
+         // and the way to keep it was to know to double click.
+         openFile(node.path, /*pin=*/true);
       }
       if (ImGui::IsItemClicked(0) && ImGui::IsMouseDragging(0)) {
          m_isDragging = true;
@@ -1216,16 +1732,17 @@ void EditorApp::renderFileTree(FileNode& node)
          m_isDragging = false;
          m_draggedItemPath.clear();
       }
-      if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
-         openFile(node.path);
-      }
-
+      // No double-click branch: a click already keeps the tab, so a second click on
+      // the same row has nothing left to decide. It used to be the only way to keep a
+      // file, and ImGui only reports the double click when both clicks land within a
+      // few pixels, so "double click to keep it" was a rule nobody could see.
+      //
       if (ImGui::IsItemClicked(1)) {
          ImGui::OpenPopup(("##ctx_" + node.path).c_str());
       }
       if (ImGui::BeginPopup(("##ctx_" + node.path).c_str())) {
          if (ImGui::MenuItem("Open")) {
-            openFile(node.path);
+            openFile(node.path, /*pin=*/true);
          }
          if (isJSON && ImGui::MenuItem("Open as Text")) {
             openFileAsText(node.path);
@@ -1273,23 +1790,134 @@ void EditorApp::renderFileTree(FileNode& node)
 // Editor Panel Rendering
 // ============================================================================
 
+/**
+ * @brief The bar of open files, above whichever editor is showing them
+ *
+ * Drawn here rather than inside a backend, because the backends are not the ones
+ * that know what is open: there is one ST editor, one JSON viewer and so on, and
+ * the set of files is wider than all of them together.
+ *
+ * A preview is drawn in italics, the way VS Code draws one, because the difference
+ * between a tab you are passing through and one you are working in is the whole
+ * reason the second click overwrites the first. An unsaved file carries a dot, and
+ * the dot is the only thing here that says anything about changes being at risk.
+ *
+ * The bar scrolls sideways rather than squeezing: thirty tabs in the width of a
+ * window is unreadable at any size that shows them all, and a name truncated to
+ * four letters is worse than one that runs off the edge and scrolls.
+ *
+ * Both its dimensions are given rather than left to ImGui, and the height is the
+ * reason the panel used to show nothing but this bar. A zero in a child window's
+ * size is not "none of it", it is *all* of it: this one was `ImVec2(0, 0)`, grew to
+ * the height of the whole panel, and the editor it was meant to sit above was laid
+ * out underneath and never seen. The width stays at zero on purpose, because that
+ * is what makes the bar span the panel; the height is a row, plus the scrollbar's
+ * height on the one frame where the tabs turn out to be too many for it.
+ */
+void EditorApp::renderFileTabs()
+{
+   // Before the bar is measured or drawn, because the marks are part of what it
+   // measures: a tab that has just been saved is a tab that is narrower.
+   refreshDirtyState();
+
+   const std::vector<OpenDocument>& docs = m_open.documents();
+   if (docs.empty()) {
+      return;
+   }
+
+   // How wide the bar wants to be, summed before anything is drawn: ImGui only
+   // learns the content size once the buttons exist, and a child window cannot be
+   // told to shrink after the fact. The widths are the ones ImGui itself uses --
+   // CalcTextSize plus the frame padding, and one ItemSpacing for every SameLine
+   // below -- so the sum matches what the child will measure, off by nothing.
+   const ImGuiStyle& style = ImGui::GetStyle();
+   float needed = 0.0f;
+   for (const OpenDocument& doc : docs) {
+      const std::string name = fs::path(doc.path).filename().string();
+      const std::string label = doc.pinned ? name : ("~ " + name);
+
+      needed += ImGui::CalcTextSize(label.c_str()).x + style.FramePadding.x * 2.0f;
+      needed += style.ItemSpacing.x;   // the SameLine after the tab
+      if (doc.dirty) {
+         needed += ImGui::CalcTextSize("*").x + style.ItemSpacing.x;
+      }
+      needed += ImGui::CalcTextSize("x").x + style.FramePadding.x * 2.0f;
+      needed += style.ItemSpacing.x;   // the SameLine after the close button
+   }
+   // The loop below ends every tab with a SameLine, including the last one, and
+   // ImGui counts no spacing after a line nothing follows. Discount it once, or
+   // the bar reserves room for a scrollbar it does not need.
+   needed -= style.ItemSpacing.x;
+
+   // The scrollbar is inside the bar, so it is inside its height: a bar that grew
+   // by the scrollbar's height would push the editor down by that much every time
+   // a tab was opened, and a bar given only a row would clip its own buttons. The
+   // row is always reserved; the scrollbar only when the tabs are wider than the
+   // panel.
+   const bool scrolls = needed > ImGui::GetContentRegionAvail().x;
+   const float barHeight = ImGui::GetFrameHeightWithSpacing() + (scrolls ? style.ScrollbarSize : 0.0f);
+   const ImGuiWindowFlags barFlags = scrolls
+                                         ? ImGuiWindowFlags_HorizontalScrollbar
+                                         : (ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+   ImGui::BeginChild("##fileTabs", ImVec2(0.0f, barHeight), false, barFlags);
+
+   for (const OpenDocument& doc : docs) {
+      const std::string name = fs::path(doc.path).filename().string();
+
+      // A preview is the tab the next click replaces, and a reader should be able
+      // to tell without opening anything: the name is prefixed with a tilde. The
+      // label is held in a named string rather than built inside the call, so the
+      // button is never handed the address of a temporary.
+      const std::string label = doc.pinned ? name : ("~ " + name);
+      const bool active = (doc.path == m_open.active());
+
+      // The path is the id, because two open files can share a name in different
+      // folders and they are two tabs.
+      ImGui::PushID(doc.path.c_str());
+
+      ImGui::PushStyleColor(ImGuiCol_Button, active ? ImVec4(0.18f, 0.22f, 0.30f, 1.0f)
+                                                     : ImVec4(0.13f, 0.15f, 0.20f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.30f, 0.38f, 1.0f));
+      if (ImGui::Button(label.c_str())) {
+         switchToTab(doc.path);
+      }
+      ImGui::PopStyleColor(2);
+
+      // The unsaved mark. Beside the name rather than as a colour on the tab,
+      // because the tab colour is already saying which one is active.
+      if (doc.dirty) {
+         ImGui::SameLine();
+         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "*");
+      }
+
+      ImGui::SameLine();
+      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.40f, 0.18f, 0.18f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.65f, 0.28f, 0.28f, 1.0f));
+      if (ImGui::SmallButton("x")) {
+         closeTab(doc.path);
+      }
+      ImGui::PopStyleColor(2);
+
+      ImGui::PopID();
+      ImGui::SameLine();
+   }
+
+   ImGui::EndChild();
+}
+
+void renderOpenFileTabs()
+{
+   EditorApp::getInstance().renderFileTabs();
+}
+
 void EditorApp::renderEditorPanel()
 {
    ImGuiIO& io = ImGui::GetIO();
    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && (io.KeyCtrl || io.KeySuper)
        && // Ctrl on Windows/Linux, Cmd on macOS
        ImGui::IsKeyPressed(ImGuiKey_S)) {
-      // Sace active file
-      switch (m_currentFileType) {
-      case FileType::Cpp:
-         CppApp::getInstance().saveFile();
-         break;
-      case FileType::Text:
-         TextApp::getInstance().saveFile();
-         break;
-      default:
-         break;
-      }
+      saveActiveDocument();
    }
    // Each backend's renderEditorPanel() opens its own ImGui window
    // with the title "Editor", so we don't call ImGui::Begin here.

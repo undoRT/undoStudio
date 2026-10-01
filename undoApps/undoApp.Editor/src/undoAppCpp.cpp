@@ -94,9 +94,20 @@ void CppApp::openFile(const std::string& path)
    m_currentFilePath = path;
    m_editor->SetLanguageDefinition(TextEditor::LanguageDefinition::CPlusPlus());
    m_editor->SetText(m_editor->GetText());
+   // What is on screen is what the file holds, so the tab's unsaved mark goes with
+   // the load rather than waiting for the next edit to contradict it.
+   m_isDirty = false;
 
    m_outputLines.push_back("Loaded: " + path);
    std::cout << "[undoApp.Cpp] Opened: " << path << std::endl;
+}
+
+void CppApp::renameFileTo(const std::string& path)
+{
+   if (path.empty() || path == m_currentFilePath) {
+      return;
+   }
+   m_currentFilePath = path;
 }
 
 void CppApp::saveFile()
@@ -119,6 +130,9 @@ void CppApp::saveFile()
    }
    file << text;
    file.close();
+   // Written, so the two agree again. Only after the file opened: a save that failed
+   // leaves the mark alone.
+   m_isDirty = false;
    m_outputLines.push_back("Saved: " + m_currentFilePath);
    std::cout << "[undoApp.Cpp] Saved: " << m_currentFilePath << std::endl;
 }
@@ -126,10 +140,31 @@ void CppApp::saveFile()
 void CppApp::closeFile()
 {
    m_currentFilePath.clear();
+   m_isDirty = false;
    if (m_editor) {
       m_editor->SetText("");
    }
    m_outputLines.push_back("Closed current file");
+}
+
+void CppApp::setDocument(const std::string& path, const std::string& text)
+{
+   if (!m_editor) {
+      setupEditor();
+   }
+   m_currentFilePath = path;
+   // SetText marks the editor as changed, which is our own doing here: the text
+   // came from this editor on the way out and is going back into it.
+   if (m_editor) {
+      m_editor->SetText(text);
+   }
+   m_windowTitle = path.empty() ? "Editor" : fs::path(path).filename().string().c_str();
+}
+
+void CppApp::document(std::string& path, std::string& text) const
+{
+   path = m_currentFilePath;
+   text = m_editor ? m_editor->GetText() : std::string();
 }
 
 // ============================================================================
@@ -219,6 +254,11 @@ void CppApp::renderEditorPanel()
 
    if (m_editor) {
       m_editor->Render("##cppEditor");
+      // Sampled after the render, because the editor raises its flag while it draws
+      // and clears it at the start of the next one.
+      if (m_editor->IsTextChanged()) {
+         m_isDirty = true;
+      }
    }
 
    ImGui::End();

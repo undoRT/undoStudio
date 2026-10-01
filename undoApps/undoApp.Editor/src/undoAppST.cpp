@@ -61,6 +61,13 @@
 namespace fs = std::filesystem;
 
 namespace undoApp {
+
+// The bar of open files belongs to the Editor app. Declared rather than
+// included, because undoAppEditor.hpp includes this file's own header: including
+// it back would be a cycle.
+namespace Editor {
+void renderOpenFileTabs();
+} // namespace Editor
 namespace ST {
 
 namespace {
@@ -3751,14 +3758,23 @@ void STApp::validateAndParse()
    }
 
 
-   // Debug: display the complete generated file
-   addOutput(OutSeverity::Info, "// Generated ST file:");
-   addOutput(OutSeverity::Info, "// --- START ---");
-   for (const auto& l : m_srcLines) {
-      addOutput(OutSeverity::Info, "// " + l);
+   // Debug: the complete generated file.
+   //
+   // Off by default. It is the bulk of what this panel holds — a file of any size
+   // is hundreds of lines of it — and it arrived above the diagnostics that were
+   // the reason the panel was opened, which left the two errors somewhere under a
+   // file dump. Kept behind a switch rather than removed because it is the first
+   // thing to reach for when the generated file is not what it should be, and it
+   // was written for exactly that.
+   if (m_showGeneratedDump) {
+      addOutput(OutSeverity::Info, "// Generated ST file:");
+      addOutput(OutSeverity::Info, "// --- START ---");
+      for (const std::string& l : m_srcLines) {
+         addOutput(OutSeverity::Info, "// " + l);
+      }
+      addOutput(OutSeverity::Info, "// --- END ---");
+      addOutput(OutSeverity::Info, "");
    }
-   addOutput(OutSeverity::Info, "// --- END ---");
-   addOutput(OutSeverity::Info, "");
 
    // --- Additional syntax check for missing semicolons ---
    checkMissingSemicolons(fullSource, m_errors);
@@ -4094,18 +4110,11 @@ void STApp::runTranspiler()
       if (line.empty()) {
          continue;
       }
-      // Severity is the word in front of the message. A line carrying neither is
-      // the compiler narrating what it did.
-      std::string lower = line;
-      std::transform(lower.begin(), lower.end(), lower.begin(),
-                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-      OutSeverity severity = OutSeverity::Info;
-      if (lower.find("error") != std::string::npos) {
-         severity = OutSeverity::Error;
-      } else if (lower.find("warning") != std::string::npos) {
-         severity = OutSeverity::Warning;
-      }
-      addOutput(severity, line);
+      // Severity comes from the shape of the line rather than from the word
+      // "error" appearing anywhere in it. st2cpp ends its diagnostics with a
+      // count of what it just reported, and that count is not itself a finding:
+      // taking it at its word marked a run with no errors at all as an error.
+      addOutput(classifyCompilerLine(line), line);
    }
 
    // pclose returns the child's status in its high bits, so a non-zero wait is
@@ -4147,6 +4156,18 @@ void STApp::loadWorkspace(const std::string& path)
  * Generates the full ST content from the two editor sections and writes
  * it to the current file path. After saving, automatic validation is performed.
  */
+void STApp::renameFileTo(const std::string& path)
+{
+   if (path.empty() || path == m_currentFilePath) {
+      return;
+   }
+   // The cached index is keyed by path, so the entry for where the file was is the
+   // one lying about the file that is there now.
+   invalidateWorkspaceIndex(m_currentFilePath);
+   invalidateWorkspaceIndex(path);
+   m_currentFilePath = path;
+}
+
 void STApp::saveCurrentFile()
 {
    if (m_currentFilePath.empty()) {
@@ -4283,10 +4304,16 @@ void STApp::createNewFolder(const std::string& parentPath, const std::string& na
 void STApp::deleteFile(const std::string& path)
 {
    invalidateWorkspaceIndex(path);
-   // Show confirmation popup instead of deleting immediately
+   // Show confirmation popup instead of deleting immediately.
+   //
+   // Only the flag is set here. This is called from renderFileTree, and OpenPopup
+   // hashes its id against the current ID stack, which inside a tree node is
+   // deeper than where the modal is drawn: the two would be different ids and the
+   // popup would never appear. Worse, the entry opened here has no matching Begin,
+   // so it stays on ImGui's open stack for good and swallows every Escape pressed
+   // afterwards. The panel that owns the modal is what opens it.
    m_deletePendingPath = path;
    m_showDeleteConfirmation = true;
-   ImGui::OpenPopup("Delete Confirmation");
 }
 
 // ============================================================================
@@ -4327,14 +4354,16 @@ void STApp::openWorkspaceDialog()
       }
    }
 
-   static bool showWorkspaceDialog = true;
-   static char workspacePath[1024] = "";
-
-   if (!m_workspacePath.empty()) {
-      strncpy(workspacePath, m_workspacePath.c_str(), sizeof(workspacePath) - 1);
-   }
-
-   ImGui::OpenPopup("Select Workspace");
+   // zenity is not installed, so there is no dialog to show. Ask for the path
+   // instead, in a modal of the app's own.
+   //
+   // This used to call OpenPopup("Select Workspace") and nothing else, with no
+   // Begin anywhere in the app to match it: the popup was never drawn, and the
+   // entry it left on ImGui's open stack stayed there for the rest of the session,
+   // swallowing every Escape pressed afterwards.
+   m_showWorkspaceDialog = true;
+   strncpy(m_workspaceDialogPath, m_workspacePath.c_str(), sizeof(m_workspaceDialogPath) - 1);
+   m_workspaceDialogPath[sizeof(m_workspaceDialogPath) - 1] = '\0';
 #endif
 }
 
@@ -4751,6 +4780,88 @@ TextEditor* STApp::editorForSegment(const SourceSegment& segment) const
  * Reads the file content and splits it into Variables and Body sections.
  * Uses simple parsing to extract POU type, name, and sections.
  */
+STDocument STApp::takeDocument()
+{
+   STDocument doc;
+   doc.path = m_currentFilePath;
+   doc.pouType = m_pouType;
+   doc.pouName = m_pouName;
+   doc.functionReturnType = m_functionReturnType;
+   doc.splitterPos = m_splitterPos;
+   doc.activeTab = m_activeTab;
+
+   if (m_variablesEditor) {
+      doc.pouVariablesText = m_variablesEditor->GetText();
+   }
+   if (m_bodyEditor) {
+      doc.pouBodyText = m_bodyEditor->GetText();
+   }
+
+   for (const MethodData& method : m_methods) {
+      // MethodData already carries the texts; the editor is read as well because
+      // the editor is what has been edited, and the pair is only written back
+      // into MethodData on save.
+      MethodData copy = method;
+      const auto it = m_methodEditors.find(method.name);
+      if (it != m_methodEditors.end()) {
+         if (it->second.variables) {
+            copy.variablesText = it->second.variables->GetText();
+         }
+         if (it->second.body) {
+            copy.bodyText = it->second.body->GetText();
+         }
+      }
+      doc.methods.push_back(std::move(copy));
+   }
+
+   return doc;
+}
+
+void STApp::setDocument(const STDocument& doc)
+{
+   // SetText below marks the editors as changed, and this is our own doing: the
+   // text came out of these very editors on the way in.
+   m_ignoreChangeFrames = 1;
+
+   m_currentFilePath = doc.path;
+   m_pouType = doc.pouType;
+   m_pouName = doc.pouName;
+   m_functionReturnType = doc.functionReturnType;
+   m_splitterPos = doc.splitterPos;
+   m_methods = doc.methods;
+   m_currentFileContent.clear();
+   m_ast.reset();
+   m_errors.clear();
+   m_sourceMap.clear();
+   m_srcLines.clear();
+   m_semantic.reset();
+
+   if (m_variablesEditor) {
+      m_variablesEditor->SetText(doc.pouVariablesText);
+   }
+   if (m_bodyEditor) {
+      m_bodyEditor->SetText(doc.pouBodyText);
+   }
+
+   // The method editors are keyed by name and are created on demand; dropping
+   // them here means each one is rebuilt with its text when its tab is shown, and
+   // no stale content from another file survives behind an unmatched name.
+   m_methodEditors.clear();
+   m_activeTab = doc.activeTab;
+
+   // The analysis is run again rather than carried over, so that what the panel
+   // shows is derived from the text now on screen.
+   validateAndParse();
+
+   // The document came out of this editor, so it matches what is on screen; there
+   // is nothing new to save.
+   m_isDirty = false;
+
+   if (!doc.activeTab.empty()) {
+      revealMethodTab(doc.activeTab);
+   }
+}
+
 void STApp::openFile(const std::string& path)
 {
    std::ifstream file(path);
@@ -5093,6 +5204,34 @@ void STApp::renderWorkspacePanel()
       if (ImGui::Button("Cancel")) {
          m_showDeleteConfirmation = false;
          m_deletePendingPath.clear();
+         ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndPopup();
+   }
+
+   // --- Workspace picker (only when there is no native dialog to fall back on) --
+   if (m_showWorkspaceDialog) {
+      ImGui::OpenPopup("Select Workspace");
+   }
+   if (ImGui::BeginPopupModal("Select Workspace", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+      ImGui::Text("Neither tinyfiledialogs nor zenity is available.");
+      ImGui::Text("Enter the path of the workspace folder:");
+      ImGui::InputText("##workspacePath", m_workspaceDialogPath, sizeof(m_workspaceDialogPath));
+      if (m_workspaceDialogPath[0] == '\0') {
+         ImGui::TextDisabled("No folder chosen.");
+      } else if (!fs::is_directory(m_workspaceDialogPath)) {
+         ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Not a folder.");
+      }
+      ImGui::BeginDisabled(m_workspaceDialogPath[0] == '\0' || !fs::is_directory(m_workspaceDialogPath));
+      if (ImGui::Button("Open")) {
+         loadWorkspace(m_workspaceDialogPath);
+         m_showWorkspaceDialog = false;
+         ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndDisabled();
+      ImGui::SameLine();
+      if (ImGui::Button("Cancel")) {
+         m_showWorkspaceDialog = false;
          ImGui::CloseCurrentPopup();
       }
       ImGui::EndPopup();
@@ -5610,6 +5749,14 @@ void STApp::renderEditorPanel()
    renderJumpPopup();
 
    if (ImGui::Begin("ST Editor", nullptr, ImGuiWindowFlags_NoCollapse)) {
+      // The bar of open files. It belongs to the Editor app rather than to this
+      // panel, because the set of open files is wider than the files this editor
+      // shows: a .st and a .cpp are open at once and only one of them is on screen.
+      // Drawn here as well as in the Editor panel because a .st opens in this
+      // panel, and a bar that appeared on the other side of the window would be
+      // showing what is open somewhere you cannot see it.
+      Editor::renderOpenFileTabs();
+
       if (m_currentFilePath.empty()) {
          ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No file open");
          ImGui::Text("Select a .st file from the Workspace panel");
@@ -5617,19 +5764,10 @@ void STApp::renderEditorPanel()
          return;
       }
 
-      // File info bar
-      ImGui::Text("File: %s", fs::path(m_currentFilePath).filename().string().c_str());
-      if (m_isDirty) {
-         ImGui::SameLine();
-         ImGui::TextColored(ImVec4(1.0f, 0.78f, 0.35f, 1.0f), "(unsaved changes)");
-      }
-
-      // Tooltips are off by default: they get in the way when reading code.
-      ImGui::SameLine();
-      if (ImGui::Checkbox("Tooltips", &m_showTooltips)) {
-      }
-      ImGui::SameLine();
-
+      // What kind of POU this file declares. It is the one piece of the row that used
+      // to sit here that nothing else says: the tab bar names the file, and the first
+      // method tab names the POU, but PROGRAM against FUNCTION_BLOCK against FUNCTION
+      // is only written down here, and it is what a FUNCTION's return type hangs off.
       const char* typeStr = "";
       switch (m_pouType) {
       case POUType::Program:
@@ -5642,7 +5780,7 @@ void STApp::renderEditorPanel()
          typeStr = "FUNCTION";
          break;
       }
-      ImGui::TextColored(ImVec4(0.0f, 0.7f, 1.0f, 1.0f), "| %s: %s", typeStr, m_pouName.c_str());
+      ImGui::TextColored(ImVec4(0.0f, 0.7f, 1.0f, 1.0f), "%s: %s", typeStr, m_pouName.c_str());
 
       // Toolbar with action buttons (always visible at the top, applies to
       // the whole POU - saving/compiling serializes every method tab too)
@@ -5668,6 +5806,14 @@ void STApp::renderEditorPanel()
          m_errors.clear();
          resetMethodState();
       }
+
+      // The tooltip switch travels with the buttons, which is where a per-editor
+      // setting belongs. It used to sit on a row above them that also named the file
+      // and repeated whether it had unsaved changes, both of which the tab bar drawn a
+      // few lines higher already says. Still off by default, because they get in the
+      // way when reading code: this is the one place they can be asked for.
+      ImGui::SameLine();
+      ImGui::Checkbox("Tooltips", &m_showTooltips);
 
       // Add Method popup (name + return type only, as requested)
       //
@@ -5827,29 +5973,147 @@ void STApp::renderEditorPanel()
  *
  * Displays compilation output, validation results, and error messages.
  * Errors are shown in red, success messages in green.
+ *
+ * The switches and the search field are the app's own state, not locals of this
+ * function: ImGui is asked what the user did this frame, but what it answers is
+ * kept, and a local would throw that answer away at the end of the frame. A
+ * checkbox whose target does not outlive it still draws, still toggles, and does
+ * nothing at all, which is the worst kind of switch: the one that looks broken
+ * rather than absent.
  */
 void STApp::renderOutputPanel()
 {
-   if (ImGui::Begin("ST Output", nullptr, ImGuiWindowFlags_NoCollapse)) {
-      ImGui::BeginChild("OutputLog", ImVec2(-1.0f, -1.0f), true);
-      for (const auto& line : m_outputLines) {
-         switch (line.severity) {
-         case OutSeverity::Error:
-            ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s", line.text.c_str());
-            break;
-         case OutSeverity::Warning:
-            ImGui::TextColored(ImVec4(1.0f, 0.78f, 0.35f, 1.0f), "%s", line.text.c_str());
-            break;
-         case OutSeverity::Success:
-            ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.5f, 1.0f), "%s", line.text.c_str());
-            break;
-         case OutSeverity::Info:
-            ImGui::TextColored(ImVec4(0.65f, 0.68f, 0.74f, 1.0f), "%s", line.text.c_str());
-            break;
-         }
-      }
-      ImGui::EndChild();
+   if (!ImGui::Begin("ST Output", nullptr, ImGuiWindowFlags_NoCollapse)) {
+      ImGui::End();
+      return;
    }
+
+   // --- the toolbar ------------------------------------------------------------
+   //
+   // Counts are taken from the whole list rather than from what is showing, so a
+   // switch says what turning it on would bring and never reads zero for lines
+   // that are already there and merely hidden.
+   //
+   // The filter is the app's, not a local of this function. A local is default
+   // constructed at the top of every frame, the checkboxes below write into it,
+   // and it is gone before the lines are filtered: the boxes would toggle, the log
+   // would never change, and the switches would look inert. So it is a member, and
+   // the counts are read before anything is drawn so a box never shows a number
+   // computed from a state that is one frame behind it.
+   OutputFilter& filter = m_outputFilter;
+   const size_t nErrors = OutputFilter::count(m_outputLines, OutSeverity::Error);
+   const size_t nWarnings = OutputFilter::count(m_outputLines, OutSeverity::Warning);
+   const size_t nSuccess = OutputFilter::count(m_outputLines, OutSeverity::Success);
+   const size_t nInfo = OutputFilter::count(m_outputLines, OutSeverity::Info);
+
+   ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.35f, 0.35f, 1.0f));
+   ImGui::Checkbox("Errors##out", &filter.showErrors);
+   ImGui::PopStyleColor();
+   if (nErrors > 0) {
+      ImGui::SameLine();
+      ImGui::TextDisabled("(%zu)", nErrors);
+   }
+
+   ImGui::SameLine();
+   ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.78f, 0.35f, 1.0f));
+   ImGui::Checkbox("Warnings##out", &filter.showWarnings);
+   ImGui::PopStyleColor();
+   if (nWarnings > 0) {
+      ImGui::SameLine();
+      ImGui::TextDisabled("(%zu)", nWarnings);
+   }
+
+   ImGui::SameLine();
+   ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.4f, 0.9f, 0.5f, 1.0f));
+   ImGui::Checkbox("Success##out", &filter.showSuccess);
+   ImGui::PopStyleColor();
+   if (nSuccess > 0) {
+      ImGui::SameLine();
+      ImGui::TextDisabled("(%zu)", nSuccess);
+   }
+
+   ImGui::SameLine();
+   ImGui::Checkbox("Detail##out", &filter.showInfo);
+   if (nInfo > 0) {
+      ImGui::SameLine();
+      ImGui::TextDisabled("(%zu)", nInfo);
+   }
+
+   // The generated dump is its own switch rather than part of "Detail": it is the
+   // one thing worth hiding by default, and the one to turn back on when the
+   // generated file is what is in question.
+   ImGui::SameLine();
+   ImGui::Checkbox("Generated ST##out", &m_showGeneratedDump);
+
+   ImGui::SameLine();
+   if (ImGui::SmallButton("Clear")) {
+      m_outputLines.clear();
+   }
+
+   // --- search ---------------------------------------------------------------
+   //
+   // The point of it is the errors: they arrive under the dump, and scrolling is
+   // a poor way of finding two lines among hundreds.
+   //
+   // The buffer is the app's, so the query belongs to this panel and to the
+   // workspace it was typed in. The static this replaced held its text too, so the
+   // search appeared to work; it was not per-workspace, and a query left over from
+   // one project filtered the next one's log to nothing.
+   ImGui::SetNextItemWidth(-80.0f);
+   ImGui::InputTextWithHint("##outSearch", "Search output", m_outputSearch, sizeof(m_outputSearch));
+   ImGui::SameLine();
+   if (ImGui::SmallButton("Copy")) {
+      std::string all;
+      const std::vector<OutputLine> shown = searchOutput(m_outputLines, m_outputSearch);
+      for (const OutputLine& line : shown) {
+         all += line.text;
+         all += "\n";
+      }
+      ImGui::SetClipboardText(all.c_str());
+   }
+
+   // --- the lines ------------------------------------------------------------
+   const std::vector<OutputLine> searched = searchOutput(m_outputLines, m_outputSearch);
+   const std::vector<OutputLine> visible = filter.visible(searched);
+
+   // Follow new output, but only when something was actually added, and only when
+   // the view is already at the bottom. Following unconditionally would fight the
+   // user: scrolling up to read a diagnostic while a validation ran would be undone
+   // a frame later. Following only at the bottom is what makes the panel behave
+   // like a terminal, which is what people expect of a log.
+   const bool grew = m_outputLines.size() > m_outputLinesShown;
+   m_outputLinesShown = m_outputLines.size();
+
+   ImGui::BeginChild("OutputLog", ImVec2(-1.0f, -1.0f), true,
+                    ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+   // Read before the lines are drawn, because drawing them is what grows the
+   // content and moves the maximum: asking afterwards would always be at the end.
+   const bool wasAtBottom = ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f;
+   if (visible.empty()) {
+      ImGui::TextDisabled(m_outputLines.empty() ? "Nothing yet. Validate a file to see diagnostics here."
+                                                : "Nothing matches the filter or the search.");
+   }
+   for (const OutputLine& line : visible) {
+      switch (line.severity) {
+      case OutSeverity::Error:
+         ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s", line.text.c_str());
+         break;
+      case OutSeverity::Warning:
+         ImGui::TextColored(ImVec4(1.0f, 0.78f, 0.35f, 1.0f), "%s", line.text.c_str());
+         break;
+      case OutSeverity::Success:
+         ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.5f, 1.0f), "%s", line.text.c_str());
+         break;
+      case OutSeverity::Info:
+         ImGui::TextColored(ImVec4(0.65f, 0.68f, 0.74f, 1.0f), "%s", line.text.c_str());
+         break;
+      }
+   }
+   if (grew && wasAtBottom) {
+      ImGui::SetScrollHereY(1.0f);
+   }
+   ImGui::EndChild();
+
    ImGui::End();
 }
 
