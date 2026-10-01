@@ -19,6 +19,8 @@
 #include <iostream>
 #include <memory>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
@@ -234,6 +236,30 @@ private:
             self->m_closeCallback();
          }
       });
+
+      // Files dropped onto the window. GLFW hands the paths over, one string per
+      // file, and says there were none by passing a count of zero: a drag that
+      // carried no path still arrives here, and passing an empty list on says so
+      // rather than leaving the handler to guess.
+      glfwSetDropCallback(m_window, [](GLFWwindow* window, int count, const char** paths) {
+         auto* self = static_cast<WindowServiceGLFW*>(glfwGetWindowUserPointer(window));
+         if (self == nullptr || !self->m_fileDropHandler) {
+            return;
+         }
+         std::vector<std::string> dropped;
+         dropped.reserve(count > 0 ? static_cast<size_t>(count) : 0);
+         for (int i = 0; i < count; ++i) {
+            if (paths[i] != nullptr) {
+               dropped.emplace_back(paths[i]);
+            }
+         }
+         self->m_fileDropHandler(dropped);
+      });
+   }
+
+   void setFileDropHandler(FileDropHandler handler) override
+   {
+      m_fileDropHandler = std::move(handler);
    }
 
    GLFWwindow* m_window = nullptr;
@@ -243,6 +269,7 @@ private:
    MouseButtonCallback m_mouseButtonCallback;
    ScrollCallback m_scrollCallback;
    CloseCallback m_closeCallback;
+   FileDropHandler m_fileDropHandler;
 };
 
 /**

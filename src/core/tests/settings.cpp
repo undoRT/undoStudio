@@ -116,7 +116,8 @@ int main() {
   const fs::path projects = fs::path("projects");
   fs::create_directories(projects);
   ProjectManager& pm = ProjectManager::getInstance();
-  for (int i = 0; i < static_cast<int>(ProjectManager::kMaxRecent) + 4; ++i) {
+  const size_t cap = pm.maxRecentProjects();
+  for (int i = 0; i < static_cast<int>(cap) + 4; ++i) {
       const fs::path dir = projects / ("prj" + std::to_string(i));
       fs::create_directories(dir / ".undoProject");
       std::ofstream toml(dir / ".undoProject" / "project.toml");
@@ -126,8 +127,8 @@ int main() {
       pm.closeProject();
   }
   const std::vector<std::string>& recent = pm.recentProjects();
-  check(recent.size() == ProjectManager::kMaxRecent,
-        "the list is capped at " + std::to_string(ProjectManager::kMaxRecent) + ", got " + std::to_string(recent.size()));
+  check(recent.size() == cap,
+        "the list is capped at " + std::to_string(cap) + ", got " + std::to_string(recent.size()));
   check(!recent.empty() && recent.front().find("prj13") != std::string::npos,
         "the most recent is first, got '" + (recent.empty() ? std::string("none") : recent.front()) + "'");
   check(std::find(recent.begin(), recent.end(), std::string()) == recent.end(), "no empty entries");
@@ -135,7 +136,7 @@ int main() {
   // --- reopening a project moves it rather than repeating it ---
   check(pm.openProject((projects / "prj0").string()), "reopened an older project");
   const std::vector<std::string>& afterReopen = pm.recentProjects();
-  check(afterReopen.size() == ProjectManager::kMaxRecent, "the list did not grow");
+  check(afterReopen.size() == cap, "the list did not grow");
   check(!afterReopen.empty() && afterReopen.front().find("prj0") != std::string::npos, "and it is at the head now");
   size_t times = 0;
   for (const std::string& entry : afterReopen) {
@@ -149,6 +150,53 @@ int main() {
             std::find(pm.recentProjects().begin(), pm.recentProjects().end(), (projects / "prj0").string()) ==
                 pm.recentProjects().end(),
         "a forgotten project is gone");
+
+  // --- how many are kept is a setting, not a constant ---
+  //
+  // The list is read back after every change, so these are checks on what a second
+  // run of the IDE would see rather than on the field that was just assigned.
+  check(pm.maxRecentProjects() == ProjectManager::kDefaultMaxRecent,
+        "the limit starts at " + std::to_string(ProjectManager::kDefaultMaxRecent) + ", got " +
+            std::to_string(pm.maxRecentProjects()));
+
+  pm.setMaxRecentProjects(3);
+  check(pm.maxRecentProjects() == 3, "a limit of three is remembered, got " + std::to_string(pm.maxRecentProjects()));
+  check(pm.recentProjects().size() == 3,
+        "and the list is cut to it at once, got " + std::to_string(pm.recentProjects().size()));
+
+  for (int i = 0; i < 5; ++i) {
+      pm.rememberProject("/tmp/prj-" + std::to_string(i) + "/");
+  }
+  check(pm.recentProjects().size() == 3, "the list obeys the new limit, got " + std::to_string(pm.recentProjects().size()));
+  check(!pm.recentProjects().empty() && pm.recentProjects().front().find("prj-4") != std::string::npos,
+        "and keeps the newest of what was asked for");
+
+  // --- out of range is clamped, not obeyed ---
+  //
+  // The state file is the IDE's own and is edited by hand when something has gone
+  // wrong with it. A limit of zero read back would leave a list that can never be
+  // filled, with nothing on screen to say why.
+  pm.setMaxRecentProjects(0);
+  check(pm.maxRecentProjects() == ProjectManager::kMinRecentLimit,
+        "a limit of zero is raised to " + std::to_string(ProjectManager::kMinRecentLimit) + ", got " +
+            std::to_string(pm.maxRecentProjects()));
+  pm.setMaxRecentProjects(100000);
+  check(pm.maxRecentProjects() == ProjectManager::kMaxRecentLimit,
+        "a limit of a hundred thousand is cut to " + std::to_string(ProjectManager::kMaxRecentLimit) + ", got " +
+            std::to_string(pm.maxRecentProjects()));
+
+  // A value written straight into the file, which is what a hand-edited state file
+  // looks like, has to be clamped on the way out rather than only on the way in.
+  settings::setInt(settings::kCoreFile, "recent", "max", -5);
+  check(pm.maxRecentProjects() == ProjectManager::kMinRecentLimit,
+        "a negative limit in the file is raised, got " + std::to_string(pm.maxRecentProjects()));
+  settings::setInt(settings::kCoreFile, "recent", "max", 99999);
+  check(pm.maxRecentProjects() == ProjectManager::kMaxRecentLimit,
+        "an absurd limit in the file is cut, got " + std::to_string(pm.maxRecentProjects()));
+
+  // Back to the default so nothing later in the file depends on the limit above.
+  settings::setInt(settings::kCoreFile, "recent", "max", static_cast<int>(ProjectManager::kDefaultMaxRecent));
+  check(pm.maxRecentProjects() == ProjectManager::kDefaultMaxRecent, "and it goes back to the default");
 
   if (failures == 0) {
     std::printf("RESULT: all checks passed\n");

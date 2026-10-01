@@ -190,16 +190,45 @@ public:
 
    /**
     * @brief The projects opened most recently, newest first
-    * @return Absolute paths, at most kMaxRecent of them
+    * @return Absolute paths, at most maxRecentProjects() of them
     *
     * Remembered so they can be offered as a list. A project is not reopened on its
     * own: the IDE starting with somebody's project already on disk is a surprise,
     * and a list is one click away from the same place.
+    *
+    * Reading the list is what pulls it off disk, on the first call of the run. It
+    * has to be here rather than in the code that opens or forgets a project: those
+    * are the only calls that used to load it, so a run in which nobody opened
+    * anything showed an empty list while the entries sat in the file. That reads
+    * as a lost history, and the history was in the state file the whole time.
     */
-   const std::vector<std::string>& recentProjects() const { return m_recentProjects; }
+   const std::vector<std::string>& recentProjects() const {
+      loadRecents();
+      return m_recentProjects;
+   }
 
-   /// @brief How many projects are kept in the list
-   static constexpr size_t kMaxRecent = 10;
+    /// @brief How many projects are kept when nothing has been configured
+    static constexpr size_t kDefaultMaxRecent = 10;
+
+    /// @brief The least and the most a configured limit may be
+    static constexpr size_t kMinRecentLimit = 1;
+    static constexpr size_t kMaxRecentLimit = 100;
+
+    /**
+     * @brief How many projects the list keeps
+     *
+     * Read from the state file and clamped to kMinRecentLimit..kMaxRecentLimit.
+     * Clamped rather than refused because the file is the IDE's own and is edited
+     * by hand when something has gone wrong with it: a limit of zero would leave a
+     * list that can never be filled, and one of ten thousand would make every frame
+     * after a project is opened walk a list nobody asked for.
+     */
+    size_t maxRecentProjects() const;
+
+    /// @brief Set how many projects the list keeps
+    /// @param count The new limit, clamped the same way maxRecentProjects() is
+    void setMaxRecentProjects(size_t count);
+
 
    /// @brief Put a project at the head of the list, or move it there if it was there
    /// @param projectPath Absolute path of the project
@@ -213,7 +242,10 @@ public:
    void clearRecentProjects();
 
    /// @brief Read the list from the state file, once
-   void loadRecents();
+   ///
+   /// Const because it is a cache: reading the list does not change what the list
+   /// is, and recentProjects() is const and has to be able to fill it.
+   void loadRecents() const;
 
    // --------------------------------------------------------------------------
    // PLC management
@@ -319,8 +351,10 @@ private:
    ProjectConfig m_config;
    std::vector<PLCConfig> m_plcs;
    std::vector<TaskConfig> m_tasks;
-   std::vector<std::string> m_recentProjects; ///< Opened projects, newest first
-   bool m_recentsLoaded = false;
+   /// Opened projects, newest first. Mutable because reading the list fills it,
+   /// and reading is const.
+   mutable std::vector<std::string> m_recentProjects;
+   mutable bool m_recentsLoaded = false;
    std::map<std::string, std::vector<std::string>> m_exports;
    OnProjectChanged m_onChanged;
 };

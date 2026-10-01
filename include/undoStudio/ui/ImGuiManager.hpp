@@ -16,6 +16,7 @@
 #pragma once
 
 #include <imgui.h>
+#include <deque>
 #include <memory>
 #include <functional>
 #include <vector>
@@ -168,11 +169,26 @@ public:
    /// @brief Name of the recent projects popup, shared by the ask and the draw
    static constexpr const char* kRecentProjectsPopup = "##recentProjects";
 
+   /// @brief Name of the recent files popup, shared by the ask and the draw
+   static constexpr const char* kRecentFilesPopup = "##recentFiles";
+
    /// @brief Ask for the recent projects list to be shown on the next frame
    void openRecentProjects();
 
    /// @brief Draw the recent projects list, and set a request when one is picked
    void renderRecentProjects();
+
+   /// @brief Ask for the recent files list to be shown on the next frame
+   void openRecentFiles();
+
+   /**
+    * @brief Draw the recent files list, and ask for the picked one to be opened
+    *
+    * The pick goes through requestOpenFile rather than opening anything here, for
+    * the same reason the project list does not open a project: the editor that shows
+    * a file belongs to an undoApp, and the core asks rather than calls.
+    */
+   void renderRecentFiles();
 
    /**
     * @brief Take the project a menu asked to open, if one was asked for
@@ -186,6 +202,41 @@ public:
     * @return The path, or nullptr when nothing was asked for
     */
    const std::string* consumeOpenProjectRequest(std::string& projectPath);
+
+   /**
+    * @brief Ask for a project to be opened
+    *
+    * The counterpart of requestOpenFile, and the same crossing: the recent list and
+    * the keyboard shortcut already reach the Workspace this way, and a project
+    * named on the command line or dropped as a folder belongs with them.
+    *
+    * @param projectPath The project directory, or its .undoProject folder
+    */
+   void requestOpenProject(const std::string& projectPath);
+
+   /**
+    * @brief Ask for a file to be opened in the editor
+    *
+    * Where a path handed to the IDE on the command line, or dropped onto the
+    * window, is left until an undoApp takes it. Both of those arrive here and both
+    * are the core, while the editor that opens them belongs to an undoApp, so the
+    * request crosses the same way the recent-projects one does.
+    *
+    * A file handed over while another is already open replaces it, which is what
+    * opening a file means everywhere else; the queue below holds one because a
+    * drop can carry several and they are opened in the order they were given,
+    * leaving the last one as the one on screen.
+    *
+    * @param filePath The file to open, as the user wrote it
+    */
+   void requestOpenFile(const std::string& filePath);
+
+   /**
+    * @brief Take the next file that was asked to be opened
+    * @param filePath Set to the path, valid until the next call
+    * @return The path, or nullptr when nothing was asked for
+    */
+   const std::string* consumeOpenFileRequest(std::string& filePath);
 
    /**
     * @brief Copy the layout shipped in resources/ into place when there is none
@@ -251,9 +302,12 @@ private:
    std::string m_iniFilename = "undoStudio_layout.ini"; ///< Persistent storage for ImGuiIO::IniFilename
    ImTextureID m_logoTexture = 0;
    bool m_showAboutPopup = false; ///< True once Help > About undoStudio was asked for
-   bool m_showRecentsPopup = false; ///< True while the recent projects list is open
-   std::string m_pendingOpenProject;   ///< Set by the menu, taken by the undoApp
-   std::string m_pendingForgetProject; ///< Set by the list's remove button
+bool m_showRecentsPopup = false; ///< True while the recent projects list is open
+    std::string m_pendingOpenProject;   ///< Set by the menu, taken by the undoApp
+    /// True while the recent files list is open, and cleared with it
+    bool m_showRecentFilesPopup = false;
+   /// Files asked to be opened, oldest first, by the command line or by a drop.
+   std::deque<std::string> m_pendingOpenFiles;
 };
 
 } // namespace ui

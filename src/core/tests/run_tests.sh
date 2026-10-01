@@ -33,6 +33,7 @@ run_state_test() {
 
   if ! g++ -std=c++17 -O1 -I "$ROOT/include" -o "$exe" \
         "$TESTS/$name.cpp" "$ROOT/src/core/Settings.cpp" "$ROOT/src/core/ProjectManager.cpp" \
+        "$ROOT/src/core/OpenTarget.cpp" "$ROOT/src/core/RecentFiles.cpp" \
         2>"$OUT/$name.build.log"; then
     echo "  BUILD FAIL  $name  (see $OUT/$name.build.log)"
     return 1
@@ -53,11 +54,36 @@ run_state_test() {
   return 1
 }
 
-# The recent projects list, which draws a popup inside an ImGui frame. imgui.cpp
-# is compiled in rather than linked: the static library belongs to the
-# undoStudio executable's build and is not something a test should need built.
+# The tests that draw inside an ImGui frame. imgui.cpp is compiled in rather than
+# linked: the static library belongs to the undoStudio executable's build and is
+# not something a test should need built.
+# The call sites are read as text: no compilation, and no ImGui either. It is
+# passed the repository root so that it can be pointed at another tree.
+run_sites_test() {
+  local name="$1"
+  local exe="$OUT/$name"
+  local work="$OUT/work-$name"
+
+  if ! g++ -std=c++17 -O1 -o "$exe" "$TESTS/$name.cpp" \
+        2>"$OUT/$name.build.log"; then
+    echo "  BUILD FAIL  $name  (see $OUT/$name.build.log)"
+    return 1
+  fi
+
+  rm -rf "$work"
+  mkdir -p "$work"
+  ( cd "$ROOT" && "$exe" "$ROOT" )
+  local rc=$?
+  if [ $rc -eq 0 ]; then
+    echo "  PASS  $name"
+    return 0
+  fi
+  echo "  FAIL  $name"
+  return 1
+}
+
 run_recents_test() {
-  local name="recents"
+  local name="$1"
   local exe="$OUT/$name"
   local work="$OUT/work-$name"
 
@@ -110,7 +136,8 @@ for t in "${TESTS}"/*.cpp; do
   name=$(basename "$t" .cpp)
   wanted "$name" "$@" || continue
   case "$name" in
-    recents) run_recents_test "$name" || failed=1 ;;
+    recents|recents_reload|popup_dismissal|open_file_request|recents_ui|recent_files_ui) run_recents_test "$name" || failed=1 ;;
+    popup_call_sites|shipped_layout) run_sites_test "$name" || failed=1 ;;
     *)       run_state_test "$name" || failed=1 ;;
   esac
 done

@@ -726,6 +726,41 @@ bool ProjectManager::openProject(const std::string& projectDir)
 // Recent projects
 // ============================================================================
 
+size_t ProjectManager::maxRecentProjects() const
+{
+   // Clamped on the way out as well as on the way in: the file can be edited by
+   // hand between runs, and a limit of zero read back would silently make the list
+   // empty forever with nothing to say why.
+   const int stored = settings::getInt(settings::kCoreFile, "recent", "max", static_cast<int>(kDefaultMaxRecent));
+   if (stored < static_cast<int>(kMinRecentLimit)) {
+      return kMinRecentLimit;
+   }
+   if (stored > static_cast<int>(kMaxRecentLimit)) {
+      return kMaxRecentLimit;
+   }
+   return static_cast<size_t>(stored);
+}
+
+void ProjectManager::setMaxRecentProjects(size_t count)
+{
+   size_t clamped = count;
+   if (clamped < kMinRecentLimit) {
+      clamped = kMinRecentLimit;
+   }
+   if (clamped > kMaxRecentLimit) {
+      clamped = kMaxRecentLimit;
+   }
+   settings::setInt(settings::kCoreFile, "recent", "max", static_cast<int>(clamped));
+   // Trim now rather than at the next rememberProject: a limit lowered from fifty
+   // to five should leave five entries, not fifty of which forty-five appear in no
+   // list and go on being written to the file.
+   loadRecents();
+   if (m_recentProjects.size() > clamped) {
+      m_recentProjects.resize(clamped);
+      settings::setList(settings::kCoreFile, "recent", "project", m_recentProjects);
+   }
+}
+
 void ProjectManager::rememberProject(const std::string& projectPath)
 {
    if (projectPath.empty()) {
@@ -739,8 +774,9 @@ void ProjectManager::rememberProject(const std::string& projectPath)
    m_recentProjects.erase(std::remove(m_recentProjects.begin(), m_recentProjects.end(), projectPath),
                           m_recentProjects.end());
    m_recentProjects.insert(m_recentProjects.begin(), projectPath);
-   if (m_recentProjects.size() > kMaxRecent) {
-      m_recentProjects.resize(kMaxRecent);
+   const size_t limit = maxRecentProjects();
+   if (m_recentProjects.size() > limit) {
+      m_recentProjects.resize(limit);
    }
    settings::setList(settings::kCoreFile, "recent", "project", m_recentProjects);
 }
@@ -763,7 +799,7 @@ void ProjectManager::clearRecentProjects()
    settings::setList(settings::kCoreFile, "recent", "project", m_recentProjects);
 }
 
-void ProjectManager::loadRecents()
+void ProjectManager::loadRecents() const
 {
    if (m_recentsLoaded) {
       return;

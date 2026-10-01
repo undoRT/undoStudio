@@ -18,6 +18,7 @@
 // #include "undoStudio/services/RenderService.hpp"
 #include "undoStudio/ui/ImGuiManager.hpp"
 #include "undoStudio/core/PluginManager.hpp"
+#include "undoStudio/core/OpenTarget.hpp"
 #include "undoStudio/core/Settings.hpp"
 
 #include <iostream>
@@ -44,10 +45,6 @@ Application& Application::getInstance()
 
 bool Application::initialize(int argc, char** argv)
 {
-   // Suppress unused parameter warnings
-   (void) argc;
-   (void) argv;
-
    std::cout << "[undoStudio] Initializing application..." << std::endl;
 
    try {
@@ -108,6 +105,50 @@ bool Application::initialize(int argc, char** argv)
 
       // Setup close callback
       windowService.setCloseCallback([this]() { requestQuit(); });
+
+      // ---------------------------------------------------------------------
+      // Opening what was handed to the IDE
+      // ---------------------------------------------------------------------
+      //
+      // Both routes end in the same place: a project replaces the workspace tree,
+      // a file goes to the editor that handles it, and the undoApp that does
+      // either is a plugin, which the core cannot call. So the core decides what
+      // it was given and leaves the request; the Workspace panel takes it on its
+      // next frame.
+      //
+      // Files dropped onto the window arrive here through the window system rather
+      // than through ImGui, whose GLFW backend in this tree carries no drop
+      // callback of its own. They are taken in the order dropped, so a drop of
+      // several leaves the last one on screen, which is the one that was last and
+      // so the one the user was still holding when they let go.
+      windowService.setFileDropHandler([&imguiManager](const std::vector<std::string>& dropped) {
+         for (const std::string& path : dropped) {
+            std::cerr << "[undoStudio] Dropped: " << path << std::endl;
+            if (core::classifyOpenTarget(path) == core::OpenTargetKind::Project) {
+               imguiManager.requestOpenProject(path);
+            } else if (core::classifyOpenTarget(path) == core::OpenTargetKind::File) {
+               imguiManager.requestOpenFile(path);
+            } else {
+               std::cerr << "[undoStudio] Not a project or a file, ignoring: " << path << std::endl;
+            }
+         }
+      });
+
+      for (const std::string& path : core::pathsFromCommandLine(argc, argv)) {
+         const core::OpenTargetKind kind = core::classifyOpenTarget(path);
+         std::cout << "[undoStudio] Asked for " << path << std::endl;
+         switch (kind) {
+         case core::OpenTargetKind::Project:
+            imguiManager.requestOpenProject(path);
+            break;
+         case core::OpenTargetKind::File:
+            imguiManager.requestOpenFile(path);
+            break;
+         case core::OpenTargetKind::None:
+            std::cerr << "[undoStudio] Not a project or a file, ignoring: " << path << std::endl;
+            break;
+         }
+      }
 
       m_isRunning = true;
       m_quitRequested = false;

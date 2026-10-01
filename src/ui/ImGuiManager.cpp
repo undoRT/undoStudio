@@ -11,6 +11,7 @@
 
 #include "undoStudio/ui/ImGuiManager.hpp"
 #include "undoStudio/core/ProjectManager.hpp"
+#include "undoStudio/core/RecentFiles.hpp"
 #include "undoStudio/services/WindowService.hpp"
 #include "version.hpp"
 
@@ -332,16 +333,28 @@ void ImGuiManager::renderMenuBar()
       if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_R) && !io.WantTextInput) {
          openRecentProjects();
       }
+      // Ctrl+P, which is what reaches for a file in VS Code. Ctrl+R is taken by the
+      // recent projects, so the file list could not have had it, and the two are
+      // worth telling apart on the keyboard as well as in the menu.
+      if (io.KeyCtrl && !io.KeyAlt && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_P) && !io.WantTextInput) {
+         openRecentFiles();
+      }
 
       if (ImGui::BeginMenu("File")) {
-         if (ImGui::MenuItem("Open Recent")) {
+         if (ImGui::MenuItem("Open Recent Projects\tCtrl+R")) {
             openRecentProjects();
+         }
+         if (ImGui::MenuItem("Open Recent Files\tCtrl+P")) {
+            openRecentFiles();
          }
          ImGui::EndMenu();
       }
 
       if (m_showRecentsPopup) {
          renderRecentProjects();
+      }
+      if (m_showRecentFilesPopup) {
+         renderRecentFiles();
       }
 
       // Menu
@@ -375,8 +388,15 @@ void ImGuiManager::renderMenuBar()
       // a click anywhere else, without the box having to offer a way out itself.
       // A modal here would be closable only by its own button, and Escape does not
       // reach it.
+      //
+      // The ask is spent here, the moment it is passed on. ImGui takes the
+      // dismissal before this code runs and takes it off the open stack, so a flag
+      // left standing would ask again in the very same frame and the box would
+      // never be gone: closing it and reopening it is what reads as flickering, and
+      // there is no way to tell such a popup apart from one that cannot be closed.
       if (m_showAboutPopup) {
          ImGui::OpenPopup("About undoStudio");
+         m_showAboutPopup = false;
       }
       if (ImGui::BeginPopup("About undoStudio", ImGuiWindowFlags_AlwaysAutoResize)) {
          ImGui::TextUnformatted("undoStudio v" STUDIO_VERSION_STRING);
@@ -388,16 +408,19 @@ void ImGuiManager::renderMenuBar()
          ImGui::Separator();
          ImGui::TextUnformatted("Copyright (c) 2025-2026 undoRT");
          ImGui::TextUnformatted("All rights reserved.");
-         ImGui::TextUnformatted("Author: Salvatore Bamundo");
+         ImGui::Text("Author: Salvatore Bamundo");
          ImGui::TextDisabled("Licence: GPL-3.0-or-later");
          ImGui::Separator();
          ImGui::TextDisabled("Built with ImGui, ImPlot, GLFW, st2cpp");
          if (ImGui::Button("Close")) {
-            m_showAboutPopup = false;
             ImGui::CloseCurrentPopup();
          }
          ImGui::EndPopup();
-      } else if (!m_showAboutPopup) {
+      } else {
+         // A plain popup goes away on Escape and on a click outside it, without
+         // going through the button above. Clearing the ask here rather than in the
+         // button is what lets it: a flag left standing after a dismissal asks
+         // again on the next frame, and the popup cannot be closed.
          m_showAboutPopup = false;
       }
 
@@ -538,13 +561,9 @@ void ImGuiManager::openRecentProjects()
 void ImGuiManager::renderRecentProjects()
 {
    auto& pm = core::ProjectManager::getInstance();
-   const std::vector<std::string>& recent = pm.recentProjects();
 
-   if (m_pendingForgetProject.empty()) {
-      ImGui::SetNextWindowPos(ImVec2(200.0f, 80.0f), ImGuiCond_Appearing);
-      ImGui::SetNextWindowSize(ImVec2(520.0f, 0.0f), ImGuiCond_Appearing);
-   }
-   m_pendingForgetProject.clear();
+   ImGui::SetNextWindowPos(ImVec2(200.0f, 80.0f), ImGuiCond_Appearing);
+   ImGui::SetNextWindowSize(ImVec2(520.0f, 0.0f), ImGuiCond_Appearing);
 
    // Given the keyboard on the frame it opens, so the list can be walked with the
    // arrows and chosen with Enter without a mouse. It has to be asked for before
@@ -552,22 +571,68 @@ void ImGuiManager::renderRecentProjects()
    ImGui::SetNextWindowFocus();
    const bool open = ImGui::BeginPopup(kRecentProjectsPopup, ImGuiWindowFlags_NoSavedSettings);
    if (open) {
+      // Copied, not held: forgetting a project rewrites the list the one being
+      // walked is a view of, and iterating that view while it shrinks is the kind
+      // of bug that reads as a random crash rather than as this.
+      const std::vector<std::string> recent = pm.recentProjects();
       if (recent.empty()) {
          ImGui::TextDisabled("No project has been opened yet.");
       } else {
          for (const std::string& path : recent) {
             const std::string name = fs::path(path).filename().string();
-            if (ImGui::Selectable(name.c_str())) {
+            const bool onDisk = fs::exists(path);
+
+            // The path is pushed as the id around everything on the row, and stayed
+            // pushed past the button to the name beside it: the name is not unique —
+            // two projects can be called "main", in two different folders — and a row
+            // whose id is only its name is one widget drawn twice. The second one
+            // never becomes hovered, so its name cannot be clicked and only the first
+            // project of that name can be opened.
+            ImGui::PushID(path.c_str());
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.25f, 0.25f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.8f, 0.35f, 0.35f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.9f, 0.45f, 0.45f, 1.0f));
+            if (ImGui::SmallButton("x")) {
+               pm.forgetProject(path);
+            }
+            ImGui::PopStyleColor(3);
+
+            ImGui::SameLine();
+            if (!onDisk) {
+               // Said here rather than only when the entry is picked, because a
+               // name in a list that does nothing is worse than one that says why.
+               ImGui::TextDisabled("%s (missing)", name.c_str());
+            } else if (ImGui::Selectable(name.c_str())) {
                m_pendingOpenProject = path;
                m_showRecentsPopup = false;
                ImGui::CloseCurrentPopup();
             }
+            ImGui::PopID();
             if (ImGui::IsItemHovered()) {
                ImGui::SetTooltip("%s", path.c_str());
             }
          }
          ImGui::Separator();
-         if (ImGui::MenuItem("Clear the list")) {
+
+         // The limit, edited where the list it governs is. There is no settings
+         // panel to put it in, and a limit reached by opening more than ten
+         // projects is a limit you cannot reach deliberately.
+         int limit = static_cast<int>(pm.maxRecentProjects());
+         ImGui::SetNextItemWidth(80.0f);
+         if (ImGui::InputInt("&Remember", &limit, 1, 5)) {
+            pm.setMaxRecentProjects(static_cast<size_t>(limit < 0 ? 0 : limit));
+            // InputInt leaves the entry showing the value that was clamped away, so
+            // it is put back to what was actually stored.
+            limit = static_cast<int>(pm.maxRecentProjects());
+         }
+         if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("How many projects to remember (%u to %u)",
+                              static_cast<unsigned>(core::ProjectManager::kMinRecentLimit),
+                              static_cast<unsigned>(core::ProjectManager::kMaxRecentLimit));
+         }
+
+         ImGui::SameLine();
+         if (ImGui::Button("Clear the list")) {
             pm.clearRecentProjects();
             m_showRecentsPopup = false;
             ImGui::CloseCurrentPopup();
@@ -594,6 +659,107 @@ void ImGuiManager::renderRecentProjects()
    }
 }
 
+void ImGuiManager::openRecentFiles()
+{
+   // OpenPopup is what puts the list on ImGui's stack of open popups; setting the
+   // flag and drawing it is not enough, for the reason given in openRecentProjects.
+   m_showRecentFilesPopup = true;
+   ImGui::OpenPopup(kRecentFilesPopup);
+}
+
+void ImGuiManager::renderRecentFiles()
+{
+   auto& recents = core::RecentFiles::getInstance();
+
+   ImGui::SetNextWindowPos(ImVec2(200.0f, 80.0f), ImGuiCond_Appearing);
+   ImGui::SetNextWindowSize(ImVec2(620.0f, 0.0f), ImGuiCond_Appearing);
+
+   // Given the keyboard on the frame it opens, so the list can be walked with the
+   // arrows and chosen with Enter. Asked for before the Begin: what is set here is
+   // read by the window that follows.
+   ImGui::SetNextWindowFocus();
+   const bool open = ImGui::BeginPopup(kRecentFilesPopup, ImGuiWindowFlags_NoSavedSettings);
+   if (open) {
+      // Copied rather than held: forgetting a file rewrites the list this one is a
+      // view of, and walking a list while it shrinks is a crash that reads as random.
+      const std::vector<std::string> recent = recents.recentFiles();
+      if (recent.empty()) {
+         ImGui::TextDisabled("No file has been opened yet.");
+      } else {
+         for (const std::string& path : recent) {
+            const fs::path file(path);
+            const std::string name = file.filename().string();
+            const bool onDisk = fs::exists(path);
+
+            // The path is pushed as the id around everything on the row, and stayed
+            // pushed past the button to the name beside it: the name is not unique —
+            // two files can be called undoFB.st in two different projects — and a row
+            // whose id is only its name is one widget drawn twice. The second one never
+            // becomes hovered, so its name cannot be clicked and only the first file of
+            // that name can be opened.
+            ImGui::PushID(path.c_str());
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.25f, 0.25f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.8f, 0.35f, 0.35f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.9f, 0.45f, 0.45f, 1.0f));
+            if (ImGui::SmallButton("x")) {
+               recents.forgetFile(path);
+            }
+            ImGui::PopStyleColor(3);
+
+            ImGui::SameLine();
+            if (!onDisk) {
+               // Said here rather than only when picked: a name in a list that does
+               // nothing is worse than one that says why it does nothing.
+               ImGui::TextDisabled("%s (missing)", name.c_str());
+            } else if (ImGui::Selectable(name.c_str())) {
+               // The pick is a request, not an open. The editor that shows a file
+               // belongs to an undoApp and the core asks rather than calls, which is
+               // the same crossing the recent projects list uses.
+               requestOpenFile(path);
+               m_showRecentFilesPopup = false;
+               ImGui::CloseCurrentPopup();
+            }
+            ImGui::PopID();
+            if (ImGui::IsItemHovered()) {
+               ImGui::SetTooltip("%s", path.c_str());
+            }
+         }
+         ImGui::Separator();
+
+         // The limit, edited where the list it governs is. Shared with the project
+         // list on purpose: it is one "remember N" setting, not two.
+         int limit = static_cast<int>(recents.maxRecentFiles());
+         ImGui::SetNextItemWidth(80.0f);
+         if (ImGui::InputInt("&Remember", &limit, 1, 5)) {
+            recents.setMaxRecentFiles(static_cast<size_t>(limit < 0 ? 0 : limit));
+            // InputInt leaves the entry showing the value that was clamped away, so
+            // it is put back to what was actually stored.
+            limit = static_cast<int>(recents.maxRecentFiles());
+         }
+         if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("How many files to remember (%u to %u)",
+                              static_cast<unsigned>(core::RecentFiles::kMinRecentLimit),
+                              static_cast<unsigned>(core::RecentFiles::kMaxRecentLimit));
+         }
+
+         ImGui::SameLine();
+         if (ImGui::Button("Clear the list")) {
+            recents.clearRecentFiles();
+            m_showRecentFilesPopup = false;
+            ImGui::CloseCurrentPopup();
+         }
+      }
+   }
+   if (open) {
+      ImGui::EndPopup();
+   }
+   if (!open) {
+      // Esc or a click elsewhere: ImGui has closed the popup and the flag has to
+      // follow it, or the next frame opens a new one.
+      m_showRecentFilesPopup = false;
+   }
+}
+
 const std::string* ImGuiManager::consumeOpenProjectRequest(std::string& projectPath)
 {
    if (m_pendingOpenProject.empty()) {
@@ -602,6 +768,42 @@ const std::string* ImGuiManager::consumeOpenProjectRequest(std::string& projectP
    projectPath = m_pendingOpenProject;
    m_pendingOpenProject.clear();
    return &projectPath;
+}
+
+void ImGuiManager::requestOpenProject(const std::string& projectPath)
+{
+   if (projectPath.empty()) {
+      return;
+   }
+   m_pendingOpenProject = projectPath;
+}
+
+void ImGuiManager::requestOpenFile(const std::string& filePath)
+{
+   if (filePath.empty()) {
+      return;
+   }
+   // Bounded on purpose: a drop of a whole directory from a file manager, or a
+   // command line built by a shell glob, can name hundreds of files, and holding
+   // them all until an undoApp gets round to them is a way to use a lot of memory
+   // for no gain. The ones beyond this are dropped rather than queued behind the
+   // ones that came first.
+   constexpr size_t kMaxPendingFiles = 64;
+   if (m_pendingOpenFiles.size() >= kMaxPendingFiles) {
+      std::cerr << "[ImGui] More files than can be opened at once, ignoring " << filePath << std::endl;
+      return;
+   }
+   m_pendingOpenFiles.push_back(filePath);
+}
+
+const std::string* ImGuiManager::consumeOpenFileRequest(std::string& filePath)
+{
+   if (m_pendingOpenFiles.empty()) {
+      return nullptr;
+   }
+   filePath = m_pendingOpenFiles.front();
+   m_pendingOpenFiles.pop_front();
+   return &filePath;
 }
 
 void ImGuiManager::loadLayout(const std::string& filename)

@@ -17,6 +17,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 #include <glm/glm.hpp>
 
 namespace undoStudio {
@@ -73,6 +74,24 @@ public:
      * input, resize, and close events.
      */
    virtual void pollEvents() = 0;
+
+   /**
+     * @brief Be told which paths were dropped onto the window
+     * @param handler Called with the dropped paths, or with an empty list for a
+     *                drop that carried none, which a drag from inside a browser
+     *                does not.
+     *
+     * The handler is called from pollEvents, so it runs on the same thread as the
+     * rest of the window's events and may set a request that a later frame picks
+     * up. It may be null, and then drops are still delivered by the platform and
+     * simply go nowhere.
+     *
+     * A drop arrives here rather than through ImGui because the paths come from
+     * the window system, and the window is this service's. The undoApp that opens
+     * them is not: see ImGuiManager::requestOpenFile.
+     */
+   using FileDropHandler = std::function<void(const std::vector<std::string>&)>;
+   virtual void setFileDropHandler(FileDropHandler handler) = 0;
 
    /**
      * @brief Swap the front and back buffers
