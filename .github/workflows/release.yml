@@ -56,6 +56,7 @@ jobs:
         run: |
           ./src/core/tests/run_tests.sh
           ./undoApps/undoApp.Editor/tests/run_tests.sh
+          ./undoApps/undoApp.Terminal/tests/run_tests.sh
 
       - name: Stage the tree
         env:
@@ -124,6 +125,30 @@ jobs:
           done
 
           test -x "$root/st2cpp/st2cpp" || { echo "the st2cpp CLI is not executable"; exit 1; }
+
+          # No state file may go into the archive.
+          #
+          # undoStudio.ini is written at run time and holds the recent projects and
+          # the last window size. Shipping one means shipping somebody's home
+          # directory in the recent list, on a machine where every one of those
+          # paths is dead, and a window sized to a screen that is not there. It is
+          # ignored in the repository, so the copy that gets staged is the one
+          # written by whatever ran the tests just before this job, and that is
+          # exactly the one that must not ship.
+          for state in undoStudio.ini undoStudio_layout.ini imgui.ini \
+                      undoApp.Editor.ini undoApp.Terminal.ini
+          do
+            [ -e "$root/$state" ] && {
+              echo "a run-time state file would ship: $state"; exit 1; }
+          done
+
+          # What the IDE falls back on when there is no state file: the shipped
+          # layout, and the window size in the struct it has always used. Both are
+          # checked so that a change to either is a deliberate one.
+          grep -q "\[Window\]\[DockSpace\]" "$root/resources/undoStudio_layout.ini" || {
+            echo "the shipped layout has no dockspace"; exit 1; }
+          ! grep -qE "^project=|^\[recent\]" "$root/resources/undoStudio_layout.ini" || {
+            echo "the shipped layout carries a recent-projects list"; exit 1; }
 
           echo "staged tree is complete"
 
