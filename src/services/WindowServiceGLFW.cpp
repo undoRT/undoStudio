@@ -77,6 +77,16 @@ public:
       glfwMakeContextCurrent(m_window);
       glfwSwapInterval(config.vsync ? 1 : 0);
 
+      // Which platform GLFW picked, what every monitor says its scale is, and what
+      // this window ended up with. GLFW chooses the platform from the environment
+      // rather than from a hint given here, so an X11 build under a Wayland
+      // session happens without anything in this file asking for it, and the
+      // per-monitor scale is what decides the size of a popup, which with the
+      // docking branch is a window of its own. Printed once, at creation, because
+      // none of it can be asked from the ImGui side: what ImGui reports is derived
+      // from these numbers, so when the two disagree these are the ones to read.
+      reportDisplaySetup();
+
       // Store pointer to this instance in the window user pointer
       glfwSetWindowUserPointer(m_window, this);
 
@@ -181,6 +191,60 @@ public:
    void setCloseCallback(CloseCallback callback) override { m_closeCallback = callback; }
 
 private:
+   /**
+    * @brief Write the platform, the monitors and this window's scale to the log
+    *
+    * The one line that decides whether two displays can be mixed is the window's
+    * content scale against the monitor's: the first is what the framebuffer is
+    * sized from and the second is what a popup on that monitor is sized from, and
+    * when they differ the popup is drawn for a density the window is not.
+    */
+   void reportDisplaySetup()
+   {
+      const char* name = "unknown";
+      switch (glfwGetPlatform()) {
+      case GLFW_PLATFORM_COCOA: name = "cocoa"; break;
+      case GLFW_PLATFORM_WIN32: name = "win32"; break;
+      case GLFW_PLATFORM_WAYLAND: name = "wayland"; break;
+      case GLFW_PLATFORM_X11: name = "x11"; break;
+      case GLFW_PLATFORM_NULL: name = "null"; break;
+      default: break;
+      }
+      std::cout << "[GLFW] platform: " << name << std::endl;
+
+      int count = 0;
+      GLFWmonitor* const* monitors = glfwGetMonitors(&count);
+      GLFWmonitor* const primary = glfwGetPrimaryMonitor();
+      for (int i = 0; i < count; ++i) {
+         int x = 0;
+         int y = 0;
+         glfwGetMonitorPos(monitors[i], &x, &y);
+         const GLFWvidmode* mode = glfwGetVideoMode(monitors[i]);
+         float sx = 0.0f;
+         float sy = 0.0f;
+         glfwGetMonitorContentScale(monitors[i], &sx, &sy);
+         std::cout << "[GLFW]   monitor " << i << " at " << x << "," << y << " "
+                   << (mode != nullptr ? mode->width : 0) << "x" << (mode != nullptr ? mode->height : 0)
+                   << " scale " << sx << "x" << sy
+                   << (monitors[i] == primary ? " (primary)" : "") << std::endl;
+      }
+
+      if (m_window == nullptr) {
+         return;
+      }
+      float wx = 0.0f;
+      float wy = 0.0f;
+      glfwGetWindowContentScale(m_window, &wx, &wy);
+      int width = 0;
+      int height = 0;
+      int fbWidth = 0;
+      int fbHeight = 0;
+      glfwGetWindowSize(m_window, &width, &height);
+      glfwGetFramebufferSize(m_window, &fbWidth, &fbHeight);
+      std::cout << "[GLFW]   this window: scale " << wx << "x" << wy << ", size " << width << "x" << height
+                << ", framebuffer " << fbWidth << "x" << fbHeight << std::endl;
+   }
+
    /**
      * @brief Setup all GLFW callbacks
      * 

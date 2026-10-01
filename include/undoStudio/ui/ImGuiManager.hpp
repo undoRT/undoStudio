@@ -79,6 +79,23 @@ public:
    void endFrame();
 
    /**
+    * @brief Write the display geometry to the log whenever it changes
+    *
+    * One line for the window, one per monitor and one per platform viewport, and
+    * nothing at all while none of them moves. A popup is a platform viewport of
+    * its own, and a mixed-DPI setup is invisible from here: the numbers that
+    * decide whether a popup is drawn once or redrawn every frame are the scale
+    * of the monitor the window is on and the scale ImGui gives the viewport,
+    * and both are only visible at run time.
+    *
+    * A viewport that is created and destroyed every frame is what a log full of
+    * lines means, so the identifier is in the report: the same popup appearing
+    * under a new id on the next line is a popup being rebuilt, and one line per
+    * frame is the reading to take from it.
+    */
+   void reportDisplayIfChanged();
+
+   /**
     * @brief Panel rendering function type
     * 
     * This function type defines the signature for panel rendering
@@ -308,6 +325,8 @@ bool m_showRecentsPopup = false; ///< True while the recent projects list is ope
     bool m_showRecentFilesPopup = false;
    /// Files asked to be opened, oldest first, by the command line or by a drop.
    std::deque<std::string> m_pendingOpenFiles;
+   /// The last display geometry written to the log, so only a change is written
+   std::string m_lastDisplayReport;
 };
 
 } // namespace ui

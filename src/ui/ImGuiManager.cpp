@@ -25,8 +25,10 @@
 #include <stb_image.h>
 #include <iostream>
 #include <algorithm>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 
 namespace undoStudio {
 namespace ui {
@@ -108,6 +110,7 @@ void ImGuiManager::newFrame()
    ImGui_ImplOpenGL3_NewFrame();
    ImGui_ImplGlfw_NewFrame();
    ImGui::NewFrame();
+   reportDisplayIfChanged();
 }
 
 void ImGuiManager::render()
@@ -146,13 +149,50 @@ void ImGuiManager::endFrame()
    ImGui::Render();
    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-    ImGuiIO& io = ImGui::GetIO();
-    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
-       GLFWwindow* backupContext = glfwGetCurrentContext();
-       ImGui::UpdatePlatformWindows();
-       ImGui::RenderPlatformWindowsDefault();
-       glfwMakeContextCurrent(backupContext);
-    }
+   ImGuiIO& io = ImGui::GetIO();
+   if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+      GLFWwindow* backupContext = glfwGetCurrentContext();
+      ImGui::UpdatePlatformWindows();
+      ImGui::RenderPlatformWindowsDefault();
+      glfwMakeContextCurrent(backupContext);
+   }
+}
+
+void ImGuiManager::reportDisplayIfChanged()
+{
+   const ImGuiIO& io = ImGui::GetIO();
+   const ImGuiPlatformIO& platform = ImGui::GetPlatformIO();
+
+   // The report is a string rather than a comparison field by field, so that a
+   // change in anything it mentions is a change in the report. Only the numbers
+   // that pick a scale or a position go in it: a window that is merely a pixel
+   // taller must not produce a line a frame.
+   std::ostringstream report;
+   auto scale = [](float v) { char buf[16]; std::snprintf(buf, sizeof(buf), "%.2f", v); return std::string(buf); };
+
+   report << "window " << static_cast<int>(io.DisplaySize.x) << "x" << static_cast<int>(io.DisplaySize.y)
+          << " framebuffer " << scale(io.DisplayFramebufferScale.x) << "x" << scale(io.DisplayFramebufferScale.y)
+          << ", " << platform.Monitors.size() << " monitor(s), " << platform.Viewports.size() << " viewport(s)";
+
+   for (const ImGuiPlatformMonitor& monitor : platform.Monitors) {
+      report << "\n[ImGui]   monitor at " << static_cast<int>(monitor.MainPos.x) << ","
+             << static_cast<int>(monitor.MainPos.y) << " " << static_cast<int>(monitor.MainSize.x) << "x"
+             << static_cast<int>(monitor.MainSize.y) << " scale " << scale(monitor.DpiScale);
+   }
+
+   for (ImGuiViewport* viewport : platform.Viewports) {
+      report << "\n[ImGui]   viewport " << viewport->ID << (viewport->ID == ImGui::GetMainViewport()->ID ? " (main)" : " (platform)")
+             << " at " << static_cast<int>(viewport->Pos.x) << "," << static_cast<int>(viewport->Pos.y) << " "
+             << static_cast<int>(viewport->Size.x) << "x" << static_cast<int>(viewport->Size.y)
+             << " framebuffer " << scale(viewport->FramebufferScale.x) << "x" << scale(viewport->FramebufferScale.y)
+             << " dpi " << scale(viewport->DpiScale);
+   }
+
+   if (report.str() == m_lastDisplayReport) {
+      return;
+   }
+   m_lastDisplayReport = report.str();
+   std::cout << m_lastDisplayReport << std::endl;
 }
 
 // ============================================================================

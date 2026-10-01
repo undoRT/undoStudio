@@ -136,7 +136,7 @@ for t in "${TESTS}"/*.cpp; do
   name=$(basename "$t" .cpp)
   wanted "$name" "$@" || continue
   case "$name" in
-    recents|recents_reload|popup_dismissal|open_file_request|recents_ui|recent_files_ui) run_recents_test "$name" || failed=1 ;;
+    recents|recents_reload|popup_dismissal|open_file_request|recents_ui|recent_files_ui|display_report) run_recents_test "$name" || failed=1 ;;
     popup_call_sites|shipped_layout) run_sites_test "$name" || failed=1 ;;
     *)       run_state_test "$name" || failed=1 ;;
   esac
