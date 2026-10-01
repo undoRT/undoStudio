@@ -80,10 +80,6 @@ jobs:
           cmake -S third_party/st2cpp -B build/st2cpp -DCMAKE_BUILD_TYPE=Release
           cmake --build build/st2cpp -j"$(nproc)"
 
-      - name: Report the cache
-        if: always()
-        run: ccache --show-stats || true
-
       - name: Test
         run: |
           ./src/core/tests/run_tests.sh
@@ -242,3 +238,9 @@ jobs:
               echo "the release does not carry $file"; echo "$attached"; exit 1; }
           done
           echo "the release carries:"; echo "$attached"
+
+      # Last, so that it accounts for what the test suites compiled as well as
+      # what the two builds did.
+      - name: Report the cache
+        if: always()
+        run: ccache --show-stats || true
