@@ -84,8 +84,11 @@ int main() {
   }
 
   // --- a command's output arrives ---
-  session.sendText("echo ciao_undoStudio\n");
-  check(pumpUntil(session, "ciao_undoStudio"), "the output of a command reaches the screen");
+  // The command uppercases its argument, so what is looked for is something the
+  // tty's echo of the typed line cannot produce: the echo is in lower case, and
+  // matching it would be satisfied by a line that was typed and never run.
+  session.sendText("echo ciao_undoStudio | tr a-z A-Z\n");
+  check(pumpUntil(session, "CIAO_UNDOSTUDIO", 6000), "the output of a command reaches the screen");
 
   // --- the size the session was started with is the size it reports ---
   check(session.rows() == 24 && session.cols() == 80,
@@ -152,13 +155,24 @@ int main() {
   //
   // Ctrl+C is 0x03. Sending the character 'c' instead would be the difference
   // between interrupting a command and typing a c.
-  session.sendText("sleep 30\n");
-  pumpUntil(session, "sleep 30", 2000);
+  //
+  // The child announces itself before it sleeps, and the interrupt waits for
+  // that announcement. A shell that has only echoed the line has not forked the
+  // job yet, and ^C arriving in that window is delivered to the shell's own
+  // process group, which ignores it while a job is being started: the sleep then
+  // runs for its full thirty seconds and everything typed after it is echoed and
+  // never run. That is not a fault the session could report, and it is what a
+  // run on a slow machine did — the shell was busy, and every check after this
+  // one failed with it.
+  session.sendText("sh -c 'echo job_running; sleep 30'\n");
+  check(pumpUntil(session, "job_running", 6000), "the job that Ctrl+C interrupts is running");
   session.sendChar('c', VTERM_MOD_CTRL);
-  // The prompt comes back because the sleep was interrupted, which is what tells
-  // us the byte arrived as a signal to the foreground job.
-  session.sendText("echo dopo_interrupt\n");
-  check(pumpUntil(session, "dopo_interrupt", 6000), "Ctrl+C interrupts and the shell is usable again");
+
+  // The shell is usable again because a command it ran reached the screen: the
+  // upper case cannot come from the echo of the line that was typed.
+  session.sendText("echo dopo_interrupt | tr a-z A-Z\n");
+  check(pumpUntil(session, "DOPO_INTERRUPT", 6000),
+        "Ctrl+C interrupts and the shell is usable again");
 
   // --- scrollback keeps what scrolled off ---
   //
