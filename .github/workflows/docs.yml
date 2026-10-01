@@ -1,0 +1,96 @@
+name: Docs — Generate & Deploy
+
+# The API reference is generated from the headers and published into the
+# undort.github.io repository, which is what serves the site. Nothing is
+# committed here: the output is not a file in this tree, so the deploy is the
+# only place it can land.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      # Only re-run when the headers, the sources they document, or the
+      # documentation itself actually change.
+      - 'include/**'
+      - 'src/**'
+      - 'undoApps/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'Doxyfile'
+      - 'doxygen_custom.css'
+      - 'undoStudio_logo.png'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:   # Allow manual trigger from Actions tab
+
+jobs:
+  doxygen:
+    name: Build & Deploy Doxygen
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout undoStudio
+        uses: actions/checkout@v4
+
+      - name: Install Doxygen and Graphviz
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            doxygen \
+            graphviz
+
+      - name: Generate Doxygen HTML
+        run: doxygen Doxyfile 2>&1 | tee doxygen.log
+
+      # A doxygen run over include/, src/ and the undoApp headers is supposed to
+      # report nothing, so a warning here is a header that has stopped saying
+      # what it is for — and an unresolved link in the README is one of them.
+      - name: Check for warnings
+        run: |
+          if grep -q -i "warning" doxygen.log; then
+            echo "::error::Doxygen reported warnings"
+            grep -i "warning" doxygen.log | head -20
+            exit 1
+          fi
+
+      - name: Verify output
+        run: |
+          if [ ! -f doxydocs/html/index.html ]; then
+            echo "::error::Doxygen did not produce doxydocs/html/index.html"
+            exit 1
+          fi
+          echo "Doxygen output: $(ls doxydocs/html | wc -l) files"
+
+      # A PAT stored as DOCS_DEPLOY_TOKEN secret in this repository. The token
+      # needs: Contents (read + write) on undoRT/undort.github.io.
+      - name: Checkout undort.github.io
+        uses: actions/checkout@v4
+        with:
+          repository: undoRT/undort.github.io
+          token: ${{ secrets.DOCS_DEPLOY_TOKEN }}
+          path: gh-pages
+
+      - name: Copy doxydocs into undoStudio/api/
+        run: |
+          # The API reference is ours alone; everything else in undoStudio/ on
+          # that repository is the page this is linked from.
+          rm -rf gh-pages/undoStudio/api
+          mkdir -p gh-pages/undoStudio/api
+          cp -r doxydocs/html/. gh-pages/undoStudio/api/
+          echo "Copied files: $(ls gh-pages/undoStudio/api | wc -l)"
+
+      - name: Commit and push to undort.github.io
+        run: |
+          cd gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add undoStudio/api/
+
+          if git diff --cached --quiet; then
+            echo "No changes to API docs — skipping commit."
+          else
+            COMMIT_SHA="${{ github.sha }}"
+            git commit -m "docs(undoStudio): update API reference from ${COMMIT_SHA:0:7}"
+            git push
+            echo "Docs deployed to https://undort.com/undoStudio/api/"
+          fi

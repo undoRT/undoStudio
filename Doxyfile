@@ -1,0 +1,31 @@
+PROJECT_NAME           = "undoStudio"
+PROJECT_BRIEF          = "The IDE of the undoRT ecosystem"
+PROJECT_LOGO           = undoStudio_logo.png
+OUTPUT_DIRECTORY       = doxydocs
+# The feature documentation is input as well as the headers, for two reasons:
+# it is what a reader wants from the front page, and the README links into it,
+# and a link doxygen cannot resolve is a warning on every one of them.
+INPUT                  = include/ src/ undoApps/undoApp.Editor/include/ \
+                         undoApps/undoApp.Terminal/include/ docs/ README.md \
+                         CHANGELOG.md
+IMAGE_PATH             = docs/images
+FILE_PATTERNS          = *.hpp *.h *.cpp *.md
+RECURSIVE              = YES
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+GENERATE_TREEVIEW      = YES
+GENERATE_LATEX         = NO
+
+# Without this the front page of the reference is an empty box with the project
+# name in it, and the first thing a reader opens is nothing.
+USE_MDFILE_AS_MAINPAGE = README.md
+HTML_EXTRA_STYLESHEET  = doxygen_custom.css
+HAVE_DOT               = YES
+UML_LOOK               = YES
+CASE_SENSE_NAMES       = NO
+WARN_NO_PARAMDOC       = NO
+
+# The .st files are what the IDE shows rather than what it compiles, and their
+# names are not C++ identifiers, so they are not input.
+EXCLUDE_PATTERNS       = */tests/* */third_party/*

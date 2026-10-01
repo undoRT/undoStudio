@@ -69,6 +69,11 @@ CMakeDoxyfile.in
 CMakeDoxygenDefaults.cmake
 progress.marks
 
+# What a local `doxygen Doxyfile` writes. The published reference is generated
+# by .github/workflows/docs.yml and committed to undort.github.io, so nothing
+# here is an input to it and a local run must not become one.
+doxydocs/
+
 # The application binary itself
 /undoStudio
 
