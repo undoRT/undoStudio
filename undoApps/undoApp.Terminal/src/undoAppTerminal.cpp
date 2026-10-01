@@ -21,7 +21,6 @@
 #include <imgui.h>
 
 #include <algorithm>
-#include <cstdio>
 #include <fstream>
 #include <iostream>
 
@@ -208,26 +207,32 @@ void TerminalApp::handleInput(Tab& tab)
 
 void TerminalApp::drawTabs()
 {
-   // Reordering is a property of the bar. The close button comes from handing
-   // BeginTabItem a pointer to close, which is what `open` below is.
-   const ImGuiTabBarFlags flags = ImGuiTabBarFlags_Reorderable | ImGuiTabBarFlags_AutoSelectNewTabs;
+   // Reordering is not offered, because the order of the tabs lives in m_tabs and
+   // dragging one only reorders ImGui's own array: the bar would move a tab and the
+   // panel would keep drawing the one it thinks is there, which is what m_active
+   // indexes. A tab moved by hand has to move m_tabs too, or not move at all.
+   // The close button comes from handing BeginTabItem a pointer to close, which is
+   // what `open` below is.
+   const ImGuiTabBarFlags flags = ImGuiTabBarFlags_AutoSelectNewTabs;
    if (ImGui::BeginTabBar("##terminalTabs", flags)) {
       for (size_t i = 0; i < m_tabs.size(); ++i) {
          bool open = true;
-         char label[128];
-         std::snprintf(label, sizeof(label), "%s", m_tabs[i].title.c_str());
-         if (ImGui::BeginTabItem(label, &open)) {
+         // The title is not an identity. Every tab is titled "Terminal" until the
+         // shell renames it, and ImGui derives a tab's ID from its label alone, so
+         // without this the second and later tabs are folded into the first: the
+         // shells run, and the user cannot see them or close them.
+         ImGui::PushID(static_cast<int>(i));
+         if (ImGui::BeginTabItem(m_tabs[i].title.c_str(), &open)) {
             m_active = static_cast<int>(i);
             ImGui::Dummy(ImVec2(0.0f, 0.0f));
-            if (!open) {
-               // Asked to close, but the contents are drawn by the caller.
-            }
             ImGui::EndTabItem();
          }
          if (!open) {
             closeTab(static_cast<int>(i));
+            ImGui::PopID();
             break;
          }
+         ImGui::PopID();
       }
       if (ImGui::TabItemButton("+")) {
          newTab();
@@ -262,15 +267,31 @@ void TerminalApp::render()
 
    drawTabs();
 
+   // Every session is pumped, not only the one on screen. A shell left in a
+   // background tab is a process that is still running: leaving its PTY
+   // unread means its output sits in the kernel buffer until the user comes
+   // back, and then arrives all at once. The read is non-blocking, so a tab
+   // with nothing to say costs one failing read.
+   for (Tab& tab : m_tabs) {
+      startSession(tab);
+      if (tab.session != nullptr) {
+         tab.session->pump();
+         // An OSC title from the shell is how a renamed tab learns its name, and
+         // that can arrive while the tab is in the background.
+         const std::string reported = tab.session->title();
+         if (!reported.empty() && reported != tab.title) {
+            tab.title = reported;
+         }
+      }
+   }
+
    // The terminal area is a child so that it can take the keyboard and the mouse
    // on its own, which is what a pane of a tabbed panel needs.
    const ImGuiChildFlags childFlags = ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding;
    if (ImGui::BeginChild("##terminalContent", ImVec2(0.0f, 0.0f), childFlags)) {
       if (m_active >= 0 && m_active < static_cast<int>(m_tabs.size())) {
          Tab& tab = m_tabs[static_cast<size_t>(m_active)];
-         startSession(tab);
          if (tab.session != nullptr && tab.view != nullptr) {
-            tab.session->pump();
 
             // The view changes the size for Ctrl and the wheel, and for Ctrl with
             // the plus, the minus or a zero. Whatever it settled on is clamped and
