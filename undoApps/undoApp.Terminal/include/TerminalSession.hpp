@@ -1,7 +1,10 @@
 /**
  * @file TerminalSession.hpp
  * @brief A shell under a pseudo-terminal, and the screen it draws
- * @ingroup undoapps
+ * @author Salvatore Bamundo
+ * @date July 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  *
  * One session is one shell process. The pty is the child's end of a
  * pseudo-terminal, so the shell believes it is talking to a terminal and turns
@@ -14,11 +17,6 @@
  *
  * Nothing here touches a graphics API, so a session can be started, fed and
  * inspected without a window.
- *
- * @author Salvatore Bamundo
- * @date July 2026
- * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  */
 
 #pragma once

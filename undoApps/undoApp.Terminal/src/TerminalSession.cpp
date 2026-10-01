@@ -1,7 +1,6 @@
 /**
  * @file TerminalSession.cpp
  * @brief A shell under a pseudo-terminal, and the screen it draws
- * @ingroup undoapps
  * @author Salvatore Bamundo
  * @date July 2026
  * SPDX-License-Identifier: GPL-3.0-or-later

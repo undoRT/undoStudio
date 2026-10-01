@@ -1,16 +1,14 @@
 /**
  * @file DemoApp.hpp
  * @brief Demo undoApp for undoStudio
- * @ingroup undoapps
- * 
- * This file demonstrates how to create a custom undoApp for
- * the undoStudio IDE. It shows the basic structure for extending
- * the IDE with new functionality.
- * 
  * @author Salvatore Bamundo
  * @date June 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ *
+ * This file demonstrates how to create a custom undoApp for
+ * the undoStudio IDE. It shows the basic structure for extending
+ * the IDE with new functionality.
  */
 
 #pragma once

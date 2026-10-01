@@ -1,16 +1,14 @@
 /**
  * @file TerminalView.hpp
  * @brief Drawing one terminal session, and the keyboard that drives it
- * @ingroup undoapps
- *
- * The session knows what is on the screen and never touches a graphics API. This
- * is the other half: it paints the cell grid, draws the cursor and the selection,
- * and turns key presses into what the session should be sent.
- *
  * @author Salvatore Bamundo
  * @date July 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ *
+ * The session knows what is on the screen and never touches a graphics API. This
+ * is the other half: it paints the cell grid, draws the cursor and the selection,
+ * and turns key presses into what the session should be sent.
  */
 
 #pragma once

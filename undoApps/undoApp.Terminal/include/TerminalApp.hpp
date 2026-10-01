@@ -1,17 +1,15 @@
 /**
  * @file TerminalApp.hpp
  * @brief The terminal undoApp: the panel, and the sessions it holds
- * @ingroup undoapps
+ * @author Salvatore Bamundo
+ * @date July 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  *
  * One panel, one session per tab, each with its own shell. A session is started
  * the first time its tab is shown, in the project root when a project is open and
  * in the current directory otherwise, so a shell opened from the IDE is already
  * where the work is.
- *
- * @author Salvatore Bamundo
- * @date July 2026
- * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  */
 
 #pragma once

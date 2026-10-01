@@ -1,8 +1,6 @@
 /**
  * @file DemoApp.cpp
  * @brief Implementation of the demo undoApp
- * @ingroup undoapps
- * 
  * @author Salvatore Bamundo
  * @date June 2026
  * SPDX-License-Identifier: GPL-3.0-or-later

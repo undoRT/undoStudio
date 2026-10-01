@@ -1,6 +1,12 @@
-// The tab bar of the terminal panel, driven inside a real ImGui frame without a
-// window.
-//
+/**
+ * @file tabs.cpp
+ * @brief The tab bar of the terminal panel, driven inside a real ImGui frame without a window
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // The bug this covers is that a tab's identity is its label and nothing else, so
 // two tabs titled "Terminal" are the same tab to ImGui: the second one is silently
 // merged into the first, and a shell the user opened with "+" becomes a shell

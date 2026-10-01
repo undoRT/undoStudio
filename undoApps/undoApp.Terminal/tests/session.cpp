@@ -1,7 +1,12 @@
-// End-to-end check of TerminalSession, without a window: a real shell is started
-// on a real pseudo-terminal, and what it writes has to arrive on the screen with
-// its colours and in the right cells.
-//
+/**
+ * @file session.cpp
+ * @brief End-to-end check of TerminalSession, without a window: a real shell on a real pty
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // The emulator is the thing being trusted here, so the assertions are about what
 // the user would see rather than about internals: a line of text, the colour a
 // prompt asked for, the cursor, and the scrollback once the screen has filled.

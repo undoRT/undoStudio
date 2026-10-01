@@ -1,16 +1,14 @@
 /**
  * @file undoAppTerminal.cpp
  * @brief The terminal undoApp: a panel with one shell per tab
- * @ingroup undoapps
- *
- * Registers the panel and owns the tabs. A session is started the first time its
- * tab is drawn, in the project root when a project is open, so the shell a user
- * opens from the IDE is already in the right directory.
- *
  * @author Salvatore Bamundo
  * @date July 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ *
+ * Registers the panel and owns the tabs. A session is started the first time its
+ * tab is drawn, in the project root when a project is open, so the shell a user
+ * opens from the IDE is already in the right directory.
  */
 
 #include "TerminalApp.hpp"

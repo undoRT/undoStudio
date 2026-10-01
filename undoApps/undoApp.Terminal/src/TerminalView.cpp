@@ -1,7 +1,6 @@
 /**
  * @file TerminalView.cpp
  * @brief Drawing one terminal session, and the keyboard that drives it
- * @ingroup undoapps
  * @author Salvatore Bamundo
  * @date July 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
