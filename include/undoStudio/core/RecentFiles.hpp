@@ -1,7 +1,10 @@
 /**
  * @file RecentFiles.hpp
  * @brief The files opened recently, newest first
- * @ingroup core
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  *
  * The tabs answer "what is open now". This answers "what was open before", which is
  * a different question and the one a file list cannot answer: the editor's tab bar
@@ -20,11 +23,6 @@
  * "remember N" setting. A second key in the same section would be a second number
  * for the same question, and a user asked to remember ten things would have to be
  * told which of the two numbers applied.
- *
- * @author Salvatore Bamundo
- * @date October 2026
- * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  */
 
 #pragma once

@@ -1,16 +1,14 @@
 /**
  * @file WindowService.hpp
  * @brief Window management service interface
- * @ingroup services
- * 
- * This file defines the abstract interface for window management.
- * It provides platform-agnostic window creation, event handling,
- * and rendering context management.
- * 
  * @author Salvatore Bamundo
  * @date June 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ *
+ * This file defines the abstract interface for window management.
+ * It provides platform-agnostic window creation, event handling,
+ * and rendering context management.
  */
 
 #pragma once

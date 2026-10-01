@@ -1,7 +1,10 @@
 /**
  * @file Settings.hpp
  * @brief Reading and writing the IDE's own state files
- * @ingroup core
+ * @author Salvatore Bamundo
+ * @date July 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  *
  * One small format, used by the files the IDE writes for itself:
  *
@@ -18,11 +21,6 @@
  * sections cannot lose each other's values by saving at the same time. That
  * matters because the window and the recent projects are both core state that
  * gets written on the way out, and they are written from different places.
- *
- * @author Salvatore Bamundo
- * @date July 2026
- * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  */
 
 #pragma once

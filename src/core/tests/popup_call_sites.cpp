@@ -1,6 +1,12 @@
-// The rule about where OpenPopup may be called, checked rather than asserted in a
-// comment.
-//
+/**
+ * @file popup_call_sites.cpp
+ * @brief The rule about where OpenPopup may be called, checked rather than asserted in a comment
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // ImGui hashes a popup's id against the ID stack at the point of the call, and
 // looks the popup up against the stack at the point of the matching Begin. Two
 // calls at different depths are two different popups, so the Begin never finds the

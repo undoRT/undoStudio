@@ -156,6 +156,7 @@ target_include_directories(undoStudioCore PUBLIC include
     ${GLM_INCLUDE_DIRS}
     third_party/stb
     third_party/glfw/include
+    third_party/nlohmann_json/single_include   # nlohmann/json.hpp is header-only
 )
 
 target_link_libraries(undoStudioCore PUBLIC

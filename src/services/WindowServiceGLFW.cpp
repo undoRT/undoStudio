@@ -1,16 +1,14 @@
 /**
  * @file WindowServiceGLFW.cpp
  * @brief GLFW implementation of the WindowService interface
- * @ingroup services
- * 
- * This file implements the WindowService interface using GLFW
- * as the underlying window management library. It supports
- * OpenGL rendering and provides cross-platform window management.
- * 
  * @author Salvatore Bamundo
  * @date June 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ *
+ * This file implements the WindowService interface using GLFW
+ * as the underlying window management library. It supports
+ * OpenGL rendering and provides cross-platform window management.
  */
 
 #include "undoStudio/services/WindowService.hpp"

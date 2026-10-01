@@ -1,7 +1,6 @@
 /**
  * @file Settings.cpp
  * @brief Reading and writing the IDE's own state files
- * @ingroup core
  * @author Salvatore Bamundo
  * @date July 2026
  * SPDX-License-Identifier: GPL-3.0-or-later

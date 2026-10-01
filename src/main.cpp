@@ -1,7 +1,6 @@
 /**
  * @file main.cpp
  * @brief Entry point for undoStudio application
- * 
  * @author Salvatore Bamundo
  * @date June 2026
  * SPDX-License-Identifier: GPL-3.0-or-later

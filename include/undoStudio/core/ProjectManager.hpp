@@ -1,18 +1,21 @@
 /**
  * @file ProjectManager.hpp
  * @brief undoProject management service for undoStudio
- * @ingroup core
+ * @author Salvatore Bamundo
+ * @date July 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  *
  * Manages the lifecycle of undoProject projects: creation, opening, closing,
  * and PLC/Task configuration. The project structure on disk is:
  *
  *   myProject/
  *     .undoProject/        <- config folder (hidden)
- *       project.toml       <- name, version, author, target, semantics
- *       plcs.toml          <- list of undoPLC entries
- *       tasks.toml         <- list of undoTask entries with cycle/priority
+ *       project.json       <- name, version, author, target, semantics
+ *       plcs.json          <- list of undoPLC entries
+ *       tasks.json         <- list of undoTask entries with cycle/priority
  *     undoCore/
- *       tasks/             <- one .toml per task (cycle, priority, cpu_affinity)
+ *       tasks/             <- one .json per task (cycle, priority, cpu_affinity)
  *     undoLogic/
  *       undoSharedLibs/    <- shared libraries across all PLCs
  *       undoSharedGVLs/    <- shared global variable lists
@@ -23,14 +26,9 @@
  *         undoGVLs/
  *         undoDUTs/
  *         undoPOUs/
- *         exports.toml     <- ordered PROGRAM list exported to undoCore
+ *         exports.json     <- ordered PROGRAM list exported to undoCore
  *       undoPLC_Y/
  *         ...
- *
- * @author Salvatore Bamundo
- * @date July 2026
- * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  */
 
 #pragma once
@@ -74,13 +72,13 @@ struct PLCConfig
 };
 
 /**
- * @brief Semantic strictness of a project, as declared in project.toml
+ * @brief Semantic strictness of a project, as declared in project.json
  *
- * "on"  -> Strictness::Strict: the st2cpp analyzer enforces the IEC 61131-3
- *          implicit-conversion rules, so a value-losing or cross-family
- *          implicit assignment (e.g. INT := REAL) is reported as an error.
- * "off" -> Strictness::Permissive: the analyzer stays permissive and lets the
- *          generated C++ static_cast perform the conversion silently.
+ * On   -> Strictness::Strict: the st2cpp analyzer enforces the IEC 61131-3
+ *         implicit-conversion rules, so a value-losing or cross-family
+ *         implicit assignment (e.g. INT := REAL) is reported as an error.
+ * Off  -> Strictness::Permissive: the analyzer stays permissive and lets the
+ *         generated C++ static_cast perform the conversion silently.
  */
 enum class Strictness {
    Off, ///< Permissive: lossy implicit conversions are not reported
@@ -99,10 +97,10 @@ struct ProjectConfig
    std::string arch = "x86_64";
    std::string os = "linux";
    std::string rt_kernel = "PREEMPT-RT";
-   std::string strictness = "on"; ///< Raw [semantics] strictness value: "on" or "off"
+   bool strictness = true; ///< [semantics] strictness as declared in project.json
 
    /// @brief Strictness as declared, defaulting to On for an absent/empty value
-   Strictness getStrictness() const { return strictness == "off" ? Strictness::Off : Strictness::On; }
+   Strictness getStrictness() const { return strictness ? Strictness::On : Strictness::Off; }
 };
 
 // ============================================================================
@@ -115,9 +113,10 @@ enum class NodeRole {
    Generic,      ///< Regular file or folder outside a project
    ProjectRoot,  ///< The project root directory
    ConfigFolder, ///< .undoProject/
+   ConfigFile,   ///< .undoProject/*.json
    UndoCore,     ///< undoCore/
    TasksFolder,  ///< undoCore/tasks/
-   TaskFile,     ///< undoCore/tasks/*.toml
+   TaskFile,     ///< undoCore/tasks/*.json
    UndoLogic,    ///< undoLogic/
    SharedLibs,   ///< undoLogic/undoSharedLibs/
    SharedGVLs,   ///< undoLogic/undoSharedGVLs/
@@ -128,9 +127,9 @@ enum class NodeRole {
    PLCGVLs,      ///< undoLogic/undoPLC_X/undoGVLs/
    PLCDUTs,      ///< undoLogic/undoPLC_X/undoDUTs/
    PLCPOUs,      ///< undoLogic/undoPLC_X/undoPOUs/
-   ExportsFile,  ///< undoLogic/undoPLC_X/exports.toml
+   ExportsFile,  ///< undoLogic/undoPLC_X/exports.json
    STFile,       ///< Any .st file
-   TOMLFile,     ///< Generic .toml config file
+   JSONFile,     ///< Any other .json file
 };
 
 // ============================================================================
@@ -149,12 +148,12 @@ public:
    // Project lifecycle
    // --------------------------------------------------------------------------
 
-   /**
-    * @brief Create a new project in parentDir/name/ and scaffold all folders
-    * @param parentDir Parent directory (must exist)
-    * @param name      Project name (becomes the folder name and project.toml name)
-    * @return true on success
-    */
+    /**
+     * @brief Create a new project in parentDir/name/ and scaffold all folders
+     * @param parentDir Parent directory (must exist)
+     * @param name      Project name (becomes the folder name and project.json name)
+     * @return true on success
+     */
    bool createProject(const std::string& parentDir, const std::string& name);
 
    /**
@@ -170,7 +169,7 @@ public:
    void closeProject();
 
    /**
-    * @brief Write all TOML config files to disk
+    * @brief Write all project configuration files to disk
     */
    bool saveProject();
 
@@ -291,7 +290,7 @@ public:
    std::string plcDUTsPath(const std::string& plcName) const;
    std::string plcPOUsPath(const std::string& plcName) const;
    std::string plcExportsPath(const std::string& plcName) const;
-   std::string taskFilePath(const std::string& taskName) const; ///< undoCore/tasks/taskName.toml
+   std::string taskFilePath(const std::string& taskName) const; ///< undoCore/tasks/taskName.json
 
    // --------------------------------------------------------------------------
    // Path classification utilities
@@ -302,6 +301,17 @@ public:
     * @return NodeRole enum value; NodeRole::Generic if not in a project
     */
    NodeRole classifyPath(const std::string& path) const;
+
+   /**
+    * @brief Whether a path is a configuration file this service owns
+    * @return true for .undoProject files, undoCore/tasks files, and the exports.json of a PLC
+    *
+    * The editor asks, because these are JSON and so open in the JSON viewer, which
+    * shows a tree and cannot be typed into. exports.json in particular is a file
+    * the user is told to edit by hand, so it is opened as text instead of as a
+    * picture of itself.
+    */
+   bool isConfigFile(const std::string& path) const;
 
    /**
     * @brief Find which PLC a path belongs to
@@ -322,16 +332,17 @@ private:
    ProjectManager(const ProjectManager&) = delete;
    ProjectManager& operator=(const ProjectManager&) = delete;
 
-   // TOML I/O
-   bool readProjectTOML();
-   bool readPLCsTOML();
-   bool readTasksTOML();
-   bool readExportsTOML(const std::string& plcName);
-   bool writeProjectTOML() const;
-   bool writePLCsTOML() const;
-   bool writeTasksTOML() const;
-   bool writeExportsTOML(const std::string& plcName) const;
-   bool writeTaskDetailTOML(const TaskConfig& t) const;
+   // Project configuration I/O. Every file this service writes is JSON: there is
+   // no reader for any other format, and no migration from one.
+   bool readProjectJSON();
+   bool readPLCsJSON();
+   bool readTasksJSON();
+   bool readExportsJSON(const std::string& plcName);
+   bool writeProjectJSON() const;
+   bool writePLCsJSON() const;
+   bool writeTasksJSON() const;
+   bool writeExportsJSON(const std::string& plcName) const;
+   bool writeTaskDetailJSON(const TaskConfig& t) const;
 
    // Filesystem scaffolding
    bool scaffoldProject(const std::string& path, const std::string& name);

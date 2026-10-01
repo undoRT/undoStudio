@@ -1,5 +1,12 @@
-// What the display log says, and when it says it.
-//
+/**
+ * @file display_report.cpp
+ * @brief What the display log records, and how often it is written
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // A popup is a platform viewport of its own, and on a mixed-DPI setup the numbers
 // that decide whether it is drawn once or redrawn every frame are the scale of the
 // monitor the window is on and the scale ImGui gives the viewport. Neither is

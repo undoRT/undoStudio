@@ -1,16 +1,14 @@
 /**
  * @file Application.cpp
  * @brief Implementation of the Application class
- * @ingroup core
- * 
- * This file defines the main Application class that manages the lifecycle
- * of the undoStudio IDE. It follows the Singleton pattern and provides
- * access to core services.
- * 
  * @author Salvatore Bamundo
  * @date June 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ *
+ * This file defines the main Application class that manages the lifecycle
+ * of the undoStudio IDE. It follows the Singleton pattern and provides
+ * access to core services.
  */
 
 #include "undoStudio/core/Application.hpp"

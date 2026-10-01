@@ -1,11 +1,13 @@
 /**
  * @file PluginManager.hpp
  * @brief Dynamic plugin loader for undoApps
- * @ingroup core
+ * @author Salvatore Bamundo
+ * @date June 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  *
- * Loads undoApp plugins (shared libraries built like undoApp.Demo) at
- * runtime via dlopen/dlsym. Each plugin exports two C functions, matching
- * the existing undoApp.Demo convention:
+ * Loads undoApp plugins (shared libraries built like undoApp.Demo) from
+ * plugins/ at runtime via dlopen/dlsym. Each plugin exports two C functions:
  *
  *     extern "C" void* createUndoApp();
  *     extern "C" void  destroyUndoApp(void* app);
@@ -14,11 +16,10 @@
  * panels, etc.) before returning, and destroyUndoApp() is expected to fully
  * tear it down (including removing any panels it registered) before
  * returning - the manager treats both pointers as opaque.
- * 
- * @author Salvatore Bamundo
- * @date June 2026
- * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ *
+ * Two panels with the same name are one panel: a registration replaces the
+ * callback rather than adding beside it, so the load order decides which body
+ * is drawn.
  */
 
 #pragma once

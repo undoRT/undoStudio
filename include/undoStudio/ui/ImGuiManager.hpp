@@ -1,16 +1,14 @@
 /**
  * @file ImGuiManager.hpp
  * @brief ImGui UI management for undoStudio
- * @ingroup ui
- * 
- * This file defines the ImGuiManager class that provides
- * Dear ImGui integration for the undoStudio IDE. It handles
- * UI rendering, panel management, docking, and theming.
- * 
  * @author Salvatore Bamundo
  * @date June 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ *
+ * This file defines the ImGuiManager class that provides
+ * Dear ImGui integration for the undoStudio IDE. It handles
+ * UI rendering, panel management, docking, and theming.
  */
 
 #pragma once

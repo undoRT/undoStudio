@@ -1,5 +1,12 @@
-// The recent projects list, driven inside a real ImGui frame without a window.
-//
+/**
+ * @file recents.cpp
+ * @brief The recent projects list, driven inside a real ImGui frame without a window
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // Open Recent is opened from the main menu bar, which is itself a window, and a
 // popup is opened between a window's Begin and its End. That is where the nesting
 // goes wrong when it goes wrong, and a crash there is not something a glance at
@@ -81,9 +88,9 @@ int main() {
   for (const std::string& name : {std::string("prjAlpha"), std::string("prjBeta")}) {
       const fs::path project = dir / name;
       fs::create_directories(project / ".undoProject");
-      std::ofstream toml(project / ".undoProject" / "project.toml");
-      toml << "[project]\nname = \"" << name << "\"\n";
-      toml.close();
+      std::ofstream json(project / ".undoProject" / "project.json");
+      json << "{\"project\": {\"name\": \"" << name << "\"}}\n";
+      json.close();
       if (name == "prjAlpha") {
          first = project.string();
       } else {

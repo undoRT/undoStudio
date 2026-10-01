@@ -1,5 +1,12 @@
-// A path handed to the IDE has to reach the editor that opens it.
-//
+/**
+ * @file open_file_request.cpp
+ * @brief A path handed to the IDE has to reach the editor that opens it
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // The core cannot open a file: the editor that does is a plugin, and a plugin is
 // loaded at run time, so the core can only leave a request and the undoApp that
 // owns the workspace picks it up. That crossing is the whole of what this covers.

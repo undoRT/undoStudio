@@ -1,5 +1,12 @@
-// What a path handed to the IDE is taken for, at launch and on a drop.
-//
+/**
+ * @file open_target.cpp
+ * @brief What a path handed to the IDE is taken for, at launch and on a drop
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // The two things that can be dragged or typed in are a project and a single file,
 // and they open in different places: a project replaces the workspace tree, a file
 // goes to the editor that handles its extension. Getting this wrong is not a
@@ -60,7 +67,7 @@ int main(int argc, char** argv) {
    // A project: a directory holding a config folder.
    const fs::path project = root / "myProject";
    fs::create_directories(project / ".undoProject");
-   writeFile(project / ".undoProject" / "project.toml", "name = \"myProject\"\n");
+   writeFile(project / ".undoProject" / "project.json", "{\"project\": {\"name\": \"myProject\"}}\n");
    writeFile(project / "Program.st", "PROGRAM x END_PROGRAM\n");
 
    // A single file outside any project.

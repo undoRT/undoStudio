@@ -1,5 +1,12 @@
-// The list of files opened recently, as the state file holds it.
-//
+/**
+ * @file recent_files.cpp
+ * @brief The list of files opened recently, as the state file holds it
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // The tabs answer "what is open now". This list answers "what was open before",
 // and it is the only place that answer survives: the editor has a single preview
 // slot, so browsing a tree in it replaces what was there, and a file opened ten

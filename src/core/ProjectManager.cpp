@@ -1,263 +1,161 @@
 /**
  * @file ProjectManager.cpp
  * @brief Implementation of the undoProject management service
- * @ingroup core
+ * @author Salvatore Bamundo
+ * @date July 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  */
 
 #include "undoStudio/core/ProjectManager.hpp"
 #include "undoStudio/core/Settings.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include <map>
 #include <algorithm>
-#include <cctype>
 #include <chrono>
 #include <ctime>
 
 namespace fs = std::filesystem;
+using json = nlohmann::json;
 
 namespace undoStudio {
 namespace core {
 
 // ============================================================================
-// Minimal TOML reader/writer
+// JSON I/O for the project configuration
 //
-// Supports: [section], [[array_section]], key = "string", key = 42,
-//           key = true/false, key = ["a", "b"]  (inline string array)
-//           # comments, values on the same line.
-// This subset is all we need for the three project config files.
+// The five files a project is described by are JSON, and nlohmann/json is already
+// vendored for the Editor's JSON viewer, so there is no hand-written parser to keep
+// in step with the writer. A value read back is the value written, which is the
+// whole reason the "on"/"off" spelling of strictness could become a real boolean.
 // ============================================================================
 
 namespace {
 
-struct TomlValue
+// Typed getters. Each one answers with the default when the key is absent or is
+// not of the type asked for, so a file edited by hand that is nearly right still
+// opens: a project is not unreadable because a number arrived as a string.
+json section(const json& doc, const char* key)
 {
-   enum class Type {
-      String,
-      Int,
-      Bool,
-      StringArray
-   } type = Type::String;
-   std::string str;
-   int64_t num = 0;
-   bool b = false;
-   std::vector<std::string> arr;
-};
-
-using TomlTable = std::map<std::string, TomlValue>;
-
-struct TomlSection
-{
-   std::string name;
-   bool isArray = false;
-   TomlTable values;
-};
-
-using TomlDoc = std::vector<TomlSection>;
-
-static std::string trimS(const std::string& s)
-{
-   size_t a = s.find_first_not_of(" \t\r\n");
-   if (a == std::string::npos) {
-      return "";
+   if (doc.is_object()) {
+      const auto it = doc.find(key);
+      if (it != doc.end() && it->is_object()) {
+         return *it;
+      }
    }
-   size_t b = s.find_last_not_of(" \t\r\n");
-   return s.substr(a, b - a + 1);
+   return json::object();
 }
 
-static TomlValue parseValue(const std::string& raw)
+json array(const json& doc, const char* key)
 {
-   std::string s = trimS(raw);
-   TomlValue v;
-   if (s.empty()) {
-      return v;
-   }
-
-   // String "..."
-   if (s.front() == '"') {
-      v.type = TomlValue::Type::String;
-      size_t end = s.find('"', 1);
-      if (end != std::string::npos) {
-         v.str = s.substr(1, end - 1);
+   if (doc.is_object()) {
+      const auto it = doc.find(key);
+      if (it != doc.end() && it->is_array()) {
+         return *it;
       }
-      return v;
    }
-
-   // Inline string array [...]
-   if (s.front() == '[') {
-      v.type = TomlValue::Type::StringArray;
-      size_t end = s.rfind(']');
-      std::string inner = (end != std::string::npos) ? s.substr(1, end - 1) : s.substr(1);
-      std::istringstream ss(inner);
-      std::string item;
-      while (std::getline(ss, item, ',')) {
-         item = trimS(item);
-         if (item.size() >= 2 && item.front() == '"' && item.back() == '"') {
-            item = item.substr(1, item.size() - 2);
-         }
-         if (!item.empty()) {
-            v.arr.push_back(item);
-         }
-      }
-      return v;
-   }
-
-   if (s == "true") {
-      v.type = TomlValue::Type::Bool;
-      v.b = true;
-      return v;
-   }
-   if (s == "false") {
-      v.type = TomlValue::Type::Bool;
-      v.b = false;
-      return v;
-   }
-
-   // Integer
-   try {
-      size_t idx;
-      v.num = std::stoll(s, &idx);
-      if (idx == s.size()) {
-         v.type = TomlValue::Type::Int;
-         return v;
-      }
-   } catch (...) {
-   }
-
-   return v; // fallback: empty String
+   return json::array();
 }
 
-static TomlDoc parseToml(const std::string& content)
+std::string str(const json& obj, const char* key, const std::string& def = "")
 {
-   TomlDoc doc;
-   TomlSection* cur = nullptr;
-   std::istringstream stream(content);
-   std::string line;
-
-   while (std::getline(stream, line)) {
-      size_t hash = line.find('#');
-      if (hash != std::string::npos) {
-         line = line.substr(0, hash);
+   if (obj.is_object()) {
+      const auto it = obj.find(key);
+      if (it != obj.end() && it->is_string()) {
+         return it->get<std::string>();
       }
-      line = trimS(line);
-      if (line.empty()) {
-         continue;
-      }
-
-      if (line.size() >= 4 && line.substr(0, 2) == "[[") {
-         size_t end = line.find("]]", 2);
-         std::string name = end != std::string::npos ? trimS(line.substr(2, end - 2)) : line.substr(2);
-         doc.push_back({name, true, {}});
-         cur = &doc.back();
-         continue;
-      }
-
-      if (line.front() == '[') {
-         size_t end = line.find(']', 1);
-         std::string name = end != std::string::npos ? trimS(line.substr(1, end - 1)) : line.substr(1);
-         doc.push_back({name, false, {}});
-         cur = &doc.back();
-         continue;
-      }
-
-      size_t eq = line.find('=');
-      if (eq == std::string::npos) {
-         continue;
-      }
-      std::string key = trimS(line.substr(0, eq));
-      std::string rawVal = trimS(line.substr(eq + 1));
-      if (key.empty()) {
-         continue;
-      }
-      if (!cur) {
-         doc.push_back({"", false, {}});
-         cur = &doc.back();
-      }
-      cur->values[key] = parseValue(rawVal);
    }
+   return def;
+}
 
+int num(const json& obj, const char* key, int def = 0)
+{
+   if (obj.is_object()) {
+      const auto it = obj.find(key);
+      if (it != obj.end() && it->is_number()) {
+         return it->get<int>();
+      }
+   }
+   return def;
+}
+
+bool flag(const json& obj, const char* key, bool def)
+{
+   if (obj.is_object()) {
+      const auto it = obj.find(key);
+      if (it != obj.end() && it->is_boolean()) {
+         return it->get<bool>();
+      }
+   }
+   return def;
+}
+
+std::vector<std::string> strList(const json& obj, const char* key)
+{
+   std::vector<std::string> out;
+   for (const auto& e : array(obj, key)) {
+      if (e.is_string()) {
+         out.push_back(e.get<std::string>());
+      }
+   }
+   return out;
+}
+
+json taskToJSON(const TaskConfig& t)
+{
+   json j;
+   j["name"] = t.name;
+   j["plc"] = t.plc;
+   j["cycle_ms"] = t.cycle_ms;
+   j["priority"] = t.priority;
+   j["cpu_affinity"] = t.cpu_affinity;
+   j["programs"] = t.programs;
+   return j;
+}
+
+TaskConfig taskFromJSON(const json& j)
+{
+   TaskConfig t;
+   t.name = str(j, "name");
+   t.plc = str(j, "plc");
+   t.cycle_ms = num(j, "cycle_ms", 1);
+   t.priority = num(j, "priority", 80);
+   t.cpu_affinity = num(j, "cpu_affinity", -1);
+   t.programs = strList(j, "programs");
+   return t;
+}
+
+// A file that cannot be read is reported and read as empty, rather than closing
+// the project: the name of a PLC and the cycle time of a task are worth keeping
+// even if the key that was wrong has to be typed again.
+json readJSONFile(const std::string& path)
+{
+   std::ifstream f(path);
+   if (!f.is_open()) {
+      return json::object();
+   }
+   json doc = json::parse(f, nullptr, /*allow_exceptions=*/false);
+   if (doc.is_discarded()) {
+      std::cerr << "[ProjectManager] Cannot parse: " << path << std::endl;
+      return json::object();
+   }
    return doc;
 }
 
-// Typed getters
-static std::string tomlStr(const TomlSection& sec, const std::string& key, const std::string& def = "")
-{
-   auto it = sec.values.find(key);
-   if (it != sec.values.end() && it->second.type == TomlValue::Type::String) {
-      return it->second.str;
-   }
-   return def;
-}
-
-static int64_t tomlInt(const TomlSection& sec, const std::string& key, int64_t def = 0)
-{
-   auto it = sec.values.find(key);
-   if (it != sec.values.end() && it->second.type == TomlValue::Type::Int) {
-      return it->second.num;
-   }
-   return def;
-}
-
-static std::vector<std::string> tomlArr(const TomlSection& sec, const std::string& key)
-{
-   auto it = sec.values.find(key);
-   if (it != sec.values.end() && it->second.type == TomlValue::Type::StringArray) {
-      return it->second.arr;
-   }
-   return {};
-}
-
-// "on"/"off" (case-insensitive) -> "on"/"off". Anything else is reported as
-// the default so a typo lands on the strict reading rather than silently
-// disabling the checks.
-static std::string tomlOnOff(const TomlSection& sec, const std::string& key, const std::string& def = "on")
-{
-   std::string raw = tomlStr(sec, key, def);
-   std::string lower = raw;
-   std::transform(lower.begin(), lower.end(), lower.begin(),
-                  [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-   return (lower == "on" || lower == "off") ? lower : def;
-}
-
-// Serialization helpers
-static std::string q(const std::string& s)
-{
-   return "\"" + s + "\"";
-}
-
-static std::string arrStr(const std::vector<std::string>& v)
-{
-   std::string r = "[";
-   for (size_t i = 0; i < v.size(); ++i) {
-      if (i) {
-         r += ", ";
-      }
-      r += q(v[i]);
-   }
-   return r + "]";
-}
-
-static bool writeFile(const std::string& path, const std::string& content)
+bool writeJSONFile(const std::string& path, const json& doc)
 {
    std::ofstream f(path, std::ios::out | std::ios::trunc);
    if (!f.is_open()) {
       std::cerr << "[ProjectManager] Cannot write: " << path << std::endl;
       return false;
    }
-   f << content;
+   f << doc.dump(2) << "\n";
    return true;
-}
-
-static std::string readFile(const std::string& path)
-{
-   std::ifstream f(path);
-   if (!f.is_open()) {
-      return "";
-   }
-   return std::string(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
 }
 
 } // anonymous namespace
@@ -358,11 +256,11 @@ std::string ProjectManager::plcPOUsPath(const std::string& n) const
 }
 std::string ProjectManager::plcExportsPath(const std::string& n) const
 {
-   return plcPath(n) + "/exports.toml";
+   return plcPath(n) + "/exports.json";
 }
 std::string ProjectManager::taskFilePath(const std::string& n) const
 {
-   return tasksPath() + "/" + n + ".toml";
+   return tasksPath() + "/" + n + ".json";
 }
 
 // ============================================================================
@@ -422,9 +320,14 @@ NodeRole ProjectManager::classifyPath(const std::string& path) const
       return NodeRole::SharedPOUs;
    }
 
-   // Task files: undoCore/tasks/*.toml
-   if (startsWith(tasksPath()) && fs::path(path).extension() == ".toml") {
+   // Task files: undoCore/tasks/*.json
+   if (startsWith(tasksPath()) && fs::path(path).extension() == ".json") {
       return NodeRole::TaskFile;
+   }
+
+   // The project description itself: .undoProject/*.json
+   if (fs::path(np).parent_path().string() == norm(configDir())) {
+      return NodeRole::ConfigFile;
    }
 
    // PLC sub-trees
@@ -455,11 +358,23 @@ NodeRole ProjectManager::classifyPath(const std::string& path) const
    if (ext == ".st") {
       return NodeRole::STFile;
    }
-   if (ext == ".toml") {
-      return NodeRole::TOMLFile;
+   if (ext == ".json") {
+      return NodeRole::JSONFile;
    }
 
    return NodeRole::Generic;
+}
+
+bool ProjectManager::isConfigFile(const std::string& path) const
+{
+   switch (classifyPath(path)) {
+   case NodeRole::ConfigFile:
+   case NodeRole::TaskFile:
+   case NodeRole::ExportsFile:
+      return true;
+   default:
+      return false;
+   }
 }
 
 std::string ProjectManager::ownerPLC(const std::string& path) const
@@ -479,157 +394,121 @@ std::string ProjectManager::ownerPLC(const std::string& path) const
 }
 
 // ============================================================================
-// TOML I/O
+// JSON I/O
 // ============================================================================
 
-bool ProjectManager::readProjectTOML()
+bool ProjectManager::readProjectJSON()
 {
-   auto doc = parseToml(readFile(configDir() + "/project.toml"));
-   for (const auto& sec : doc) {
-      if (sec.name == "project") {
-         m_config.name = tomlStr(sec, "name");
-         m_config.version = tomlStr(sec, "version", "1.0.0");
-         m_config.author = tomlStr(sec, "author");
-         m_config.created = tomlStr(sec, "created");
-      }
-      if (sec.name == "target") {
-         m_config.arch = tomlStr(sec, "arch", "x86_64");
-         m_config.os = tomlStr(sec, "os", "linux");
-         m_config.rt_kernel = tomlStr(sec, "rt_kernel", "PREEMPT-RT");
-      }
-      if (sec.name == "semantics") {
-         // A project written before this key existed carries no [semantics]
-         // section, so it reads as strict, which is what a new project is written with.
-         m_config.strictness = tomlOnOff(sec, "strictness", "on");
-      }
-   }
+   const json doc = readJSONFile(configDir() + "/project.json");
+
+   const json project = section(doc, "project");
+   m_config.name = str(project, "name");
+   m_config.version = str(project, "version", "1.0.0");
+   m_config.author = str(project, "author");
+   m_config.created = str(project, "created");
+
+   const json target = section(doc, "target");
+   m_config.arch = str(target, "arch", "x86_64");
+   m_config.os = str(target, "os", "linux");
+   m_config.rt_kernel = str(target, "rt_kernel", "PREEMPT-RT");
+
+   // A project written before this key existed carries no [semantics] section, so it
+   // reads as strict, which is what a new project is written with.
+   m_config.strictness = flag(section(doc, "semantics"), "strictness", true);
+
    return !m_config.name.empty();
 }
 
-bool ProjectManager::readPLCsTOML()
+bool ProjectManager::readPLCsJSON()
 {
    m_plcs.clear();
-   auto doc = parseToml(readFile(configDir() + "/plcs.toml"));
-   for (const auto& sec : doc) {
-      if (sec.name == "plc" && sec.isArray) {
-         PLCConfig plc;
-         plc.name = tomlStr(sec, "name");
-         plc.description = tomlStr(sec, "description");
-         if (!plc.name.empty()) {
-            m_plcs.push_back(std::move(plc));
-         }
+   for (const auto& entry : array(readJSONFile(configDir() + "/plcs.json"), "plcs")) {
+      if (!entry.is_object()) {
+         continue;
+      }
+      PLCConfig plc;
+      plc.name = str(entry, "name");
+      plc.description = str(entry, "description");
+      if (!plc.name.empty()) {
+         m_plcs.push_back(std::move(plc));
       }
    }
    return true;
 }
 
-bool ProjectManager::readTasksTOML()
+bool ProjectManager::readTasksJSON()
 {
    m_tasks.clear();
-   auto doc = parseToml(readFile(configDir() + "/tasks.toml"));
-   for (const auto& sec : doc) {
-      if (sec.name == "task" && sec.isArray) {
-         TaskConfig t;
-         t.name = tomlStr(sec, "name");
-         t.plc = tomlStr(sec, "plc");
-         t.cycle_ms = static_cast<int>(tomlInt(sec, "cycle_ms", 1));
-         t.priority = static_cast<int>(tomlInt(sec, "priority", 80));
-         t.cpu_affinity = static_cast<int>(tomlInt(sec, "cpu_affinity", -1));
-         t.programs = tomlArr(sec, "programs");
-         if (!t.name.empty()) {
-            m_tasks.push_back(std::move(t));
-         }
+   for (const auto& entry : array(readJSONFile(configDir() + "/tasks.json"), "tasks")) {
+      if (!entry.is_object()) {
+         continue;
+      }
+      TaskConfig t = taskFromJSON(entry);
+      if (!t.name.empty()) {
+         m_tasks.push_back(std::move(t));
       }
    }
    return true;
 }
 
-bool ProjectManager::readExportsTOML(const std::string& plcName)
+bool ProjectManager::readExportsJSON(const std::string& plcName)
 {
-   auto doc = parseToml(readFile(plcExportsPath(plcName)));
-   for (const auto& sec : doc) {
-      auto v = tomlArr(sec, "programs");
-      if (!v.empty()) {
-         m_exports[plcName] = v;
-         return true;
-      }
-   }
+   m_exports[plcName] = strList(readJSONFile(plcExportsPath(plcName)), "programs");
    return true;
 }
 
-bool ProjectManager::writeProjectTOML() const
+bool ProjectManager::writeProjectJSON() const
 {
-   std::ostringstream ss;
-   ss << "# undoProject — project metadata\n"
-      << "# Generated by undoStudio — do not rename the keys.\n\n"
-      << "[project]\n"
-      << "name       = " << q(m_config.name) << "\n"
-      << "version    = " << q(m_config.version) << "\n"
-      << "author     = " << q(m_config.author) << "\n"
-      << "created    = " << q(m_config.created) << "\n\n"
-      << "[target]\n"
-      << "arch       = " << q(m_config.arch) << "\n"
-      << "os         = " << q(m_config.os) << "\n"
-      << "rt_kernel  = " << q(m_config.rt_kernel) << "\n\n"
-      << "[semantics]\n"
-      << "strictness = " << q(m_config.strictness == "off" ? "off" : "on") << "\n";
-   return writeFile(configDir() + "/project.toml", ss.str());
+   json doc;
+   doc["project"] = {{"name", m_config.name},
+                     {"version", m_config.version},
+                     {"author", m_config.author},
+                     {"created", m_config.created}};
+   doc["target"] = {{"arch", m_config.arch},
+                    {"os", m_config.os},
+                    {"rt_kernel", m_config.rt_kernel}};
+   doc["semantics"] = {{"strictness", m_config.strictness}};
+   return writeJSONFile(configDir() + "/project.json", doc);
 }
 
-bool ProjectManager::writePLCsTOML() const
+bool ProjectManager::writePLCsJSON() const
 {
-   std::ostringstream ss;
-   ss << "# undoProject — PLC list\n\n";
+   json plcs = json::array();
    for (const auto& plc : m_plcs) {
-      ss << "[[plc]]\n"
-         << "name        = " << q(plc.name) << "\n"
-         << "description = " << q(plc.description) << "\n\n";
+      plcs.push_back({{"name", plc.name}, {"description", plc.description}});
    }
-   return writeFile(configDir() + "/plcs.toml", ss.str());
+   json doc;
+   doc["plcs"] = std::move(plcs);
+   return writeJSONFile(configDir() + "/plcs.json", doc);
 }
 
-bool ProjectManager::writeTasksTOML() const
+bool ProjectManager::writeTasksJSON() const
 {
-   std::ostringstream ss;
-   ss << "# undoProject — Task list\n\n";
+   json tasks = json::array();
    for (const auto& t : m_tasks) {
-      ss << "[[task]]\n"
-         << "name         = " << q(t.name) << "\n"
-         << "plc          = " << q(t.plc) << "\n"
-         << "cycle_ms     = " << t.cycle_ms << "\n"
-         << "priority     = " << t.priority << "\n"
-         << "cpu_affinity = " << t.cpu_affinity << "\n"
-         << "programs     = " << arrStr(t.programs) << "\n\n";
+      tasks.push_back(taskToJSON(t));
    }
-   return writeFile(configDir() + "/tasks.toml", ss.str());
+   json doc;
+   doc["tasks"] = std::move(tasks);
+   return writeJSONFile(configDir() + "/tasks.json", doc);
 }
 
-bool ProjectManager::writeExportsTOML(const std::string& plcName) const
+bool ProjectManager::writeExportsJSON(const std::string& plcName) const
 {
-   std::ostringstream ss;
-   ss << "# exports.toml — PROGRAM execution order for " << plcName << "\n"
-      << "# Programs are executed in the listed order at each task cycle.\n\n";
-   auto it = m_exports.find(plcName);
-   if (it != m_exports.end()) {
-      ss << "programs = " << arrStr(it->second) << "\n";
-   } else {
-      ss << "programs = []\n";
-   }
-   return writeFile(plcExportsPath(plcName), ss.str());
+   // The ordered PROGRAM list is the whole file. It is written empty rather than not
+   // at all, so that the order can be typed in by hand: the file is the one piece of
+   // the project's configuration the user is expected to edit.
+   const auto it = m_exports.find(plcName);
+   json doc;
+   doc["programs"] = (it != m_exports.end()) ? json(it->second) : json::array();
+   return writeJSONFile(plcExportsPath(plcName), doc);
 }
 
-bool ProjectManager::writeTaskDetailTOML(const TaskConfig& t) const
+bool ProjectManager::writeTaskDetailJSON(const TaskConfig& t) const
 {
-   std::ostringstream ss;
-   ss << "# undoCore task: " << t.name << "\n\n"
-      << "[task]\n"
-      << "name         = " << q(t.name) << "\n"
-      << "plc          = " << q(t.plc) << "\n"
-      << "cycle_ms     = " << t.cycle_ms << "\n"
-      << "priority     = " << t.priority << "\n"
-      << "cpu_affinity = " << t.cpu_affinity << "\n"
-      << "programs     = " << arrStr(t.programs) << "\n";
-   return writeFile(taskFilePath(t.name), ss.str());
+   json doc;
+   doc["task"] = taskToJSON(t);
+   return writeJSONFile(taskFilePath(t.name), doc);
 }
 
 // ============================================================================
@@ -683,7 +562,7 @@ bool ProjectManager::createProject(const std::string& parentDir, const std::stri
    m_config.name = name;
    m_config.created = today();
 
-   bool ok = writeProjectTOML() && writePLCsTOML() && writeTasksTOML();
+   bool ok = writeProjectJSON() && writePLCsJSON() && writeTasksJSON();
    if (!ok) {
       closeProject();
       return false;
@@ -706,9 +585,9 @@ bool ProjectManager::openProject(const std::string& projectDir)
    m_projectPath = fs::canonical(fs::path(projectDir)).string();
    m_isOpen = true;
 
-   bool ok = readProjectTOML() && readPLCsTOML() && readTasksTOML();
+   bool ok = readProjectJSON() && readPLCsJSON() && readTasksJSON();
    for (const auto& plc : m_plcs) {
-      readExportsTOML(plc.name);
+      readExportsJSON(plc.name);
    }
 
    if (!ok) {
@@ -824,12 +703,12 @@ bool ProjectManager::saveProject()
    if (!m_isOpen) {
       return false;
    }
-   bool ok = writeProjectTOML() && writePLCsTOML() && writeTasksTOML();
+   bool ok = writeProjectJSON() && writePLCsJSON() && writeTasksJSON();
    for (const auto& plc : m_plcs) {
-      ok &= writeExportsTOML(plc.name);
+      ok &= writeExportsJSON(plc.name);
    }
    for (const auto& t : m_tasks) {
-      ok &= writeTaskDetailTOML(t);
+      ok &= writeTaskDetailJSON(t);
    }
    if (ok) {
       std::cout << "[ProjectManager] Project saved." << std::endl;
@@ -859,8 +738,8 @@ bool ProjectManager::addPLC(const std::string& name, const std::string& descript
 
    m_plcs.push_back({name, description});
    m_exports[name] = {};
-   writeExportsTOML(name);
-   writePLCsTOML();
+   writeExportsJSON(name);
+   writePLCsJSON();
 
    std::cout << "[ProjectManager] Added PLC: " << name << std::endl;
    notifyChanged();
@@ -877,8 +756,8 @@ bool ProjectManager::removePLC(const std::string& name)
    m_exports.erase(name);
    // Remove the task whose PLC was this, if any
    m_tasks.erase(std::remove_if(m_tasks.begin(), m_tasks.end(), [&](const TaskConfig& t) { return t.plc == name; }), m_tasks.end());
-   writePLCsTOML();
-   writeTasksTOML();
+   writePLCsJSON();
+   writeTasksJSON();
    notifyChanged();
    return true;
 }
@@ -909,9 +788,9 @@ bool ProjectManager::renamePLC(const std::string& oldName, const std::string& ne
                t.plc = newName;
             }
          }
-         writePLCsTOML();
-         writeTasksTOML();
-         writeExportsTOML(newName);
+         writePLCsJSON();
+         writeTasksJSON();
+         writeExportsJSON(newName);
          notifyChanged();
          return true;
       }
@@ -941,8 +820,8 @@ bool ProjectManager::addTask(const TaskConfig& task)
       return false;
    }
    m_tasks.push_back(task);
-   writeTasksTOML();
-   writeTaskDetailTOML(task);
+   writeTasksJSON();
+   writeTaskDetailJSON(task);
    notifyChanged();
    return true;
 }
@@ -953,11 +832,11 @@ bool ProjectManager::removeTask(const std::string& name)
    if (it == m_tasks.end()) {
       return false;
    }
-   // Remove the task detail .toml file
+   // Remove the task detail .json file
    std::error_code ec;
    fs::remove(taskFilePath(name), ec);
    m_tasks.erase(it);
-   writeTasksTOML();
+   writeTasksJSON();
    notifyChanged();
    return true;
 }
@@ -969,8 +848,8 @@ bool ProjectManager::updateTask(const TaskConfig& task)
       return false;
    }
    *existing = task;
-   writeTasksTOML();
-   writeTaskDetailTOML(task);
+   writeTasksJSON();
+   writeTaskDetailJSON(task);
    notifyChanged();
    return true;
 }
@@ -985,7 +864,7 @@ bool ProjectManager::setExports(const std::string& plcName, const std::vector<st
       return false;
    }
    m_exports[plcName] = programs;
-   return writeExportsTOML(plcName);
+   return writeExportsJSON(plcName);
 }
 
 std::vector<std::string> ProjectManager::getExports(const std::string& plcName) const

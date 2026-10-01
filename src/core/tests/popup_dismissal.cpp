@@ -1,5 +1,12 @@
-// Popups asked for by a flag, driven inside real ImGui frames without a window.
-//
+/**
+ * @file popup_dismissal.cpp
+ * @brief Popups asked for by a flag, driven inside real ImGui frames without a window
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // The bug this covers: the flag is what says "open it", so it has to be consumed
 // the moment the popup is opened. A flag that only its own buttons clear is still
 // standing on the next frame, and `if (flag) OpenPopup(...)` asks again. Escape

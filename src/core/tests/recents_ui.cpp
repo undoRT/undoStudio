@@ -1,6 +1,12 @@
-// The recent list as it is drawn: what each row does, and what its remove button
-// removes.
-//
+/**
+ * @file recents_ui.cpp
+ * @brief The recent list as it is drawn: what each row does, and what its remove button removes
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // This drives ImGuiManager::renderRecentProjects() itself rather than the model
 // underneath it, because the model was already covered and the part that can go
 // wrong here is the part only ImGui sees. Two rows of the list are laid out next

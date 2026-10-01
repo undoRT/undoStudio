@@ -1,5 +1,12 @@
-// The state files: what the IDE writes for itself between one run and the next.
-//
+/**
+ * @file settings.cpp
+ * @brief The state files: what the IDE writes for itself between one run and the next
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // The format is small enough to be a mistake rather than a design problem, and
 // the mistakes it invites are all about position: a key written above the section
 // it belongs to, a second occurrence that looks like the value that was saved, a
@@ -120,9 +127,9 @@ int main() {
   for (int i = 0; i < static_cast<int>(cap) + 4; ++i) {
       const fs::path dir = projects / ("prj" + std::to_string(i));
       fs::create_directories(dir / ".undoProject");
-      std::ofstream toml(dir / ".undoProject" / "project.toml");
-      toml << "[project]\nname = \"prj" << i << "\"\n";
-      toml.close();
+      std::ofstream json(dir / ".undoProject" / "project.json");
+      json << "{\"project\": {\"name\": \"prj" << i << "\"}}\n";
+      json.close();
       check(pm.openProject(dir.string()), "opened prj" + std::to_string(i));
       pm.closeProject();
   }

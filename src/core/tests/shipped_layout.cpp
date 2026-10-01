@@ -1,5 +1,12 @@
-// What a first run of a fresh install opens on.
-//
+/**
+ * @file shipped_layout.cpp
+ * @brief What a first run of a fresh install opens on
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // The archive carries resources/undoStudio_layout.ini and nothing else that holds
 // state: undoStudio.ini, with the recent projects and the last window size, is
 // written at run time and ignored in the repository. That is what makes a new
@@ -74,10 +81,18 @@ int main(int argc, char** argv) {
          "the shipped layout has the docking data that goes with it");
 
    // --- the panels the IDE registers are the ones it arranges ---
-   for (const char* panel : {"Workspace", "Editor", "ST Editor", "ST Output"}) {
+   //
+   // Every kind of file opens in the one Editor panel, a .st included, so a
+   // "ST Editor" here would be an arrangement for a panel that is not registered:
+   // ImGui ignores the entry, and the editor lands on top of the Workspace in
+   // whatever space it had left. The check is on the absence as much as on the
+   // presence, because the stale entry is the one that goes unnoticed.
+   for (const char* panel : {"Workspace", "Editor", "ST Output", "ST Outline"}) {
       check(layout.find(std::string("[Window][") + panel + "]") != std::string::npos,
             std::string("the shipped layout places the ") + panel + " panel");
    }
+   check(layout.find("[Window][ST Editor]") == std::string::npos,
+         "the shipped layout places no ST Editor panel, which is not registered");
 
    // --- the dockspace fits the window the IDE opens at ---
    //

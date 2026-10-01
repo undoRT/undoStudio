@@ -1,6 +1,12 @@
-// The recent files list as it is drawn: which row a click acts on, and what a pick
-// asks for.
-//
+/**
+ * @file recent_files_ui.cpp
+ * @brief The recent files list as it is drawn: which row a click acts on, and what a pick asks for
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // This drives ImGuiManager::renderRecentFiles() itself rather than the model
 // underneath it, because the model is already covered by recent_files.cpp and the
 // part that can go wrong here is the part only ImGui sees. Two rows of the list are

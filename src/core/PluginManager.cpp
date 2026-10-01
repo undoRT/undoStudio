@@ -1,8 +1,6 @@
 /**
  * @file PluginManager.cpp
  * @brief Implementation of the PluginManager class
- * @ingroup core
- * 
  * @author Salvatore Bamundo
  * @date June 2026
  * SPDX-License-Identifier: GPL-3.0-or-later

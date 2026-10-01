@@ -1,5 +1,12 @@
-// The recent list as a second run of the IDE sees it.
-//
+/**
+ * @file recents_reload.cpp
+ * @brief The recent list as a second run of the IDE sees it
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // The list is read from the state file once and then kept in memory. What this
 // covers is the moment that read happens, because getting it wrong loses the list
 // on screen without touching the file: a fresh process has an empty list in

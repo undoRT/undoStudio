@@ -31,7 +31,7 @@ run_state_test() {
   local exe="$OUT/$name"
   local work="$OUT/work-$name"
 
-  if ! g++ -std=c++17 -O1 -I "$ROOT/include" -o "$exe" \
+  if ! g++ -std=c++17 -O1 -I "$ROOT/include" -I "$ROOT/third_party/nlohmann_json/single_include" -o "$exe" \
         "$TESTS/$name.cpp" "$ROOT/src/core/Settings.cpp" "$ROOT/src/core/ProjectManager.cpp" \
         "$ROOT/src/core/OpenTarget.cpp" "$ROOT/src/core/RecentFiles.cpp" \
         2>"$OUT/$name.build.log"; then

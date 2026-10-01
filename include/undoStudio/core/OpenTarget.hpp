@@ -1,11 +1,10 @@
 /**
  * @file OpenTarget.hpp
  * @brief Decides what a path given to the IDE at launch, or dropped on it, is.
- * @ingroup core
- *
- * @author undoStudio
+ * @author Salvatore Bamundo
  * @date 2026
- * @copyright SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  *
  * A path can reach undoStudio from the command line or from a drop onto the
  * window, and it can name a project or a single file. Which one it is decides
