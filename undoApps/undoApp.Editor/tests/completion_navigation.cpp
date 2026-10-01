@@ -61,16 +61,33 @@ static void runFrame(STApp& app) {
   ImGui::EndFrame();
 }
 
+/// @brief A navigation request as a name, for a failure message
+///
+/// An int is unreadable here in a way it is not elsewhere: ImGuiDir_None is -1, so
+/// a failure prints -1 and reads as a request going up rather than as none at all.
+static const char* dirName(ImGuiDir dir) {
+  switch (dir) {
+    case ImGuiDir_None: return "None";
+    case ImGuiDir_Left: return "Left";
+    case ImGuiDir_Right: return "Right";
+    case ImGuiDir_Up: return "Up";
+    case ImGuiDir_Down: return "Down";
+    default: return "?";
+  }
+}
+
 /// One frame with a key pressed, and the navigation request that press produced
 ///
 /// Read at the end of the press frame, because that is when the request exists:
 /// NewFrame is where it is built, and the frame after it drains the release, and a
 /// key on its way up asks for nothing.
-static int frameWithKeyAndNav(STApp& app, ImGuiKey key) {
+static ImGuiDir frameWithKeyAndNav(STApp& app, ImGuiKey key) {
   ImGuiIO& io = ImGui::GetIO();
   io.AddKeyEvent(key, true);
   runFrame(app);
-  const int dir = static_cast<int>(ImGui::GetCurrentContext()->NavMoveDir);
+  // ImGuiDir_None is -1, not 0: read it as the enum it is, or a list that asked
+  // for nothing reads as a request going up.
+  const ImGuiDir dir = ImGui::GetCurrentContext()->NavMoveDir;
   io.AddKeyEvent(key, false);
   runFrame(app);
   return dir;
@@ -263,7 +280,13 @@ int main() {
   if (count > 1) {
     app.m_completionSelected = 0;
     const std::string beforeDown = app.m_bodyEditor->GetText();
-    frameWithKey(app, ImGuiKey_DownArrow);
+    // The navigation request is read rather than the scrollbar: what the user saw
+    // was the body moving, and the request is what moves it, whether or not this
+    // layout happens to have a window for the focus to land on and scroll.
+    const ImGuiDir downDir = frameWithKeyAndNav(app, ImGuiKey_DownArrow);
+    check(downDir == ImGuiDir_None,
+          std::string("Down asks ImGui's navigation for nothing while the list is open, got ") +
+             dirName(downDir));
     check(app.m_completionEditor == app.m_bodyEditor.get(), "Down keeps the list open");
     check(app.m_completionSelected == 1, "Down moves the selection, got " +
                                             std::to_string(app.m_completionSelected));
@@ -278,7 +301,9 @@ int main() {
           "Down does not walk the caret onto the next line, got line " +
              std::to_string(app.m_bodyEditor->GetCursorPosition().mLine));
 
-    frameWithKey(app, ImGuiKey_UpArrow);
+    const ImGuiDir upDir = frameWithKeyAndNav(app, ImGuiKey_UpArrow);
+    check(upDir == ImGuiDir_None,
+          std::string("Up asks ImGui's navigation for nothing either, got ") + dirName(upDir));
     check(app.m_completionEditor == app.m_bodyEditor.get(), "Up keeps the list open");
     check(app.m_completionSelected == 0, "Up moves the selection back, got " +
                                             std::to_string(app.m_completionSelected));
@@ -286,7 +311,9 @@ int main() {
     // PageDown is the only other navigation a list of this length needs. Home
     // and End are left to the editor on purpose: they are how a line is
     // navigated, and a list that took them would have to be dismissed first.
-    frameWithKey(app, ImGuiKey_PageDown);
+    const ImGuiDir pageDir = frameWithKeyAndNav(app, ImGuiKey_PageDown);
+    check(pageDir == ImGuiDir_None,
+          std::string("and neither does PageDown, got ") + dirName(pageDir));
     check(app.m_completionSelected > 0 && app.m_completionSelected < count,
           "PageDown jumps within the list, got " + std::to_string(app.m_completionSelected));
     check(app.m_completionEditor == app.m_bodyEditor.get(), "PageDown keeps the list open");
@@ -297,10 +324,11 @@ int main() {
 
   // --- the arrow keys move the row, and the caret stays where it was ---
   //
-  // The key is blocked on the editor that owns the list, so the same press walks
-  // the list and not the text. That is done with one key rather than by standing
-  // ImGui's keyboard navigation down, which is a flag on the whole application
-  // and not this editor's to touch.
+  // Two different consumers of one press. The editor the list belongs to has the
+  // key blocked, so the text is not touched; the navigation keys are claimed, so
+  // ImGui's keyboard navigation is not touched either. Blocking alone was not
+  // enough, and neither was claiming alone: what the user reported was the body
+  // moving under the list, and that was the navigation half.
   const int lineBeforeArrow = app.m_bodyEditor->GetCursorPosition().mLine;
   frameWithKey(app, ImGuiKey_DownArrow);
   check(app.m_completionSelected == 1, "an arrow moves the row while the list is open, got row " +
@@ -310,9 +338,16 @@ int main() {
            std::to_string(app.m_bodyEditor->GetCursorPosition().mLine));
   frameWithKey(app, ImGuiKey_Escape);
   check(app.m_completionEditor == nullptr, "Escape closes the list");
+
+  // The claim is the list's, and only while the list is up: the flag is not stood
+  // down, so ImGui's navigation goes back to seeing arrows as soon as there is no
+  // overlay to take them.
+  const ImGuiDir freeDir = frameWithKeyAndNav(app, ImGuiKey_DownArrow);
+  check(freeDir != ImGuiDir_None,
+        std::string("with no list open the arrow is ImGui's again, got ") + dirName(freeDir));
   // What the editor does with an arrow when no list is open is ImGui's business
-  // again, and the host's keyboard navigation flag is no longer touched to arrange
-  // it. What stays checked here is the list: the row moves, the caret does not.
+  // again, and the host's keyboard navigation flag is never touched to arrange it.
+  // What stays checked here is the list: the row moves, the caret does not.
 
   // --- Enter accepts through the key path, and inserts no line break ---
   place(app, "\nmotore.re\n", 9);

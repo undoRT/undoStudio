@@ -761,14 +761,28 @@ private:
    /// Same flags for the signature help, which is the same kind of overlay
    static constexpr ImGuiWindowFlags kSignatureHelpWindowFlags = kMemberCompletionWindowFlags;
 
-  /// @brief Give the keyboard to whichever overlay is open, and take it back
+  /// @brief Claim the navigation keys for whichever overlay is open
   ///
-  /// A suggestion list owns the arrow keys, Tab, Enter and Escape while it is
-  /// open. ImGui's keyboard navigation has to be stood down for the same period:
+  /// A suggestion list owns the arrow keys and the two page keys while it is up,
+  /// and ImGui's keyboard navigation has to be blind to them for the same period:
   /// it turns an arrow press into a request to move the focus to another window,
-  /// and the window it lands on is scrolled into view, which drags the editor out
-  /// from under the popup. The flag is read inside NewFrame, so it has to be in
-  /// place by the end of the frame the overlay opened in.
+  /// and the window it lands on is scrolled into view, which drags the panel out
+  /// from under the popup.
+  ///
+  /// Ownership is the mechanism rather than clearing ImGuiConfigFlags_NavEnableKeyboard,
+  /// which is a flag on the whole application and not this editor's to stand down:
+  /// the keys are taken one at a time, and only while a list is up. NavProcessKey()
+  /// asks for them with ImGuiKeyOwner_NoOwner, so a key that has an owner is not
+  /// seen by it at all, while the list's own IsKeyPressed() — which asks with
+  /// ImGuiKeyOwner_Any — keeps working.
+  ///
+  /// Nothing is released here. Ownership is given up by ImGui on the frame after
+  /// the key comes up, and claiming a key the list is no longer using would take
+  /// it from whatever does.
+  void claimOverlayNavigationKeys();
+
+  /// @brief True while any of the three overlays is on screen
+  bool anyOverlayOpen() const;
 
   /// @brief Fill the completion list with the parameters of the call at the caret
   /// @return True when there is such a call and it has parameters to choose from
