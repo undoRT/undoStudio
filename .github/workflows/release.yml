@@ -67,7 +67,7 @@ jobs:
           root="undoStudio-$version"
 
           mkdir -p "$root/st2cpp"
-          cp -a undoStudio libundoStudioCore.so plugins resources "$root/"
+          cp -a undoStudio libundoStudioCore.so plugins resources docs "$root/"
           cp -a build/st2cpp/st2cpp "$root/st2cpp/"
 
           cat > "$root/README.txt" <<EOF
@@ -89,6 +89,13 @@ jobs:
             plugins/              the undoApps, loaded at start-up
             resources/            fonts, icons, themes, default layout
             st2cpp/st2cpp         the transpiler the Compile button invokes
+            docs/                 the feature documentation, start at editor.md
+
+          The documentation is here so it travels with the thing it describes.
+          The pages are Markdown with a screenshot each, so the one to read first
+          is docs/editor.md and the one to read when something is not what the
+          page says is docs/testing.md, which is honest about what has never been
+          seen running.
 
           System packages still have to be on the machine: the X11 and OpenGL
           development libraries GLFW builds against, and glm. They are in the
@@ -119,6 +126,9 @@ jobs:
             "$root/resources/fonts" \
             "$root/resources/icons" \
             "$root/resources/themes" \
+            "$root/docs" \
+            "$root/docs/editor.md" \
+            "$root/docs/images" \
             "$root/st2cpp/st2cpp"
           do
             [ -e "$required" ] || { echo "missing from the archive: $required"; exit 1; }
