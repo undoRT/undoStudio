@@ -196,10 +196,6 @@
   nothing selected, which is why the `+` button left the old tab on screen.
 
 ### Known issues
-- The GUI has never been seen running. This was developed on a machine with no X
-  display, so everything visual is verified by compiling it, by a headless ImGui
-  test that drives real frames, or by asking. Anything that is a question of
-  appearance should be treated as unverified until somebody has looked at it.
 - "Open as Text" and "Open as Tree" are only offered on `.json`, which is the
   only backend that cannot show its file as text.
 - A terminal tab cannot be reordered by dragging. ImGui would move the tab and

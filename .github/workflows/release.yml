@@ -121,9 +121,8 @@ jobs:
 
           The documentation is here so it travels with the thing it describes.
           The pages are Markdown with a screenshot each, so the one to read first
-          is docs/editor.md and the one to read when something is not what the
-          page says is docs/testing.md, which is honest about what has never been
-          seen running.
+          is docs/editor.md and the one to read when a change is about what the
+          tests can and cannot see is docs/testing.md.
 
           System packages still have to be on the machine: the X11 and OpenGL
           development libraries GLFW builds against, and glm. They are in the
