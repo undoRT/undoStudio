@@ -49,6 +49,13 @@ CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 Makefile
+# The editor suite's own Makefile is not one of those: it is hand-written, and it
+# is what compiles the sources the tests share into a single archive. Ignoring it
+# is not a build that stops working, it is a build that keeps working on the
+# machine that wrote it, because the file is still on disk there and missing from
+# every clone — so the suite passes locally and fails in CI with "Makefile: No
+# such file or directory" and nothing else.
+!undoApps/undoApp.Editor/tests/Makefile
 install_manifest.txt
 compile_commands.json
 

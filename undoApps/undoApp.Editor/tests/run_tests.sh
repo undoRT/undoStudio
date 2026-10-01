@@ -74,7 +74,13 @@ build_archive() {
   # parallel, and it is most of the saving.
   if ! make -C "$TESTS" -f Makefile ROOT="$ROOT" OUT="$OUT" \
         -j"$(nproc 2>/dev/null || echo 4)" > "$OUT/archive.build.log" 2>&1; then
+    # The log is printed as well as named. A build that fails on CI says
+    # "BUILD FAIL ... see /tmp/undoStudio-tests/archive.build.log", and that path
+    # is on the machine that failed, which is the one place it cannot be read
+    # from: the failure arrives with no reason attached to it. The last lines are
+    # where a compiler leaves its error.
     echo "  BUILD FAIL  the shared archive (see $OUT/archive.build.log)"
+    tail -n 20 "$OUT/archive.build.log" 2>/dev/null | sed 's/^/    /'
     return 1
   fi
   return 0
