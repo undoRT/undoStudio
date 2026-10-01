@@ -1,10 +1,10 @@
 /**
  * @file version.hpp
- * @brief Version information for undoStudio compiler
+ * @brief The version of undoStudio, as a number and as a string
  * @author Salvatore Bamundo
  * @date July 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026 Salvatore Bamundo
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  */
 
 #pragma once
@@ -14,7 +14,7 @@
 // Version numbers following Semantic Versioning (semver.org)
 #define STUDIO_VERSION_MAJOR  0
 #define STUDIO_VERSION_MINOR  1
-#define STUDIO_VERSION_PATCH  0
+#define STUDIO_VERSION_PATCH  2
 #define STUDIO_VERSION_PREREL ""
 
 // Helper macros for stringification (workaround for MSVC)

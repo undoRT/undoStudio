@@ -2,7 +2,7 @@
 # Updated for latest GLFW syntax with ImGui docking support
 
 cmake_minimum_required(VERSION 3.15)
-project(undoStudio VERSION 0.1.1)
+project(undoStudio VERSION 0.1.2)
 
 # C++ standard settings
 set(CMAKE_CXX_STANDARD 17)

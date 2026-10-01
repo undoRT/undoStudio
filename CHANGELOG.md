@@ -1,5 +1,64 @@
 # Changelog
 
+## [0.1.2] - 2026-10-01
+
+### Added
+- The feature documentation, thirteen pages under `docs/` with a screenshot each.
+  It is written as the IDE behaves rather than as it was assembled: what a panel
+  shows, which backend a file gets, what is remembered between runs. The two
+  editors that had become one are described as one, and the pages that used to
+  carry the story of a bug now carry the behaviour and leave the story to the
+  commit that found it.
+
+### Changed
+- **The project configuration is JSON.** It was TOML, and TOML it no longer is:
+  `.undoProject/project.json`, `.undoProject/plcs.json`, `.undoProject/tasks.json`,
+  `undoLogic/<plc>/exports.json` and one file per task under `undoCore/tasks/`.
+  Nothing reads the old format and nothing migrates it, so a project written
+  against it has to be rewritten once. `strictness` in the semantics block is a
+  boolean now rather than a string. JSON was already the language of the rest of
+  the tree — every diagnostic, every build descriptor — and a project described
+  in a second one was the only file the IDE could not read as itself.
+- **One editor panel, for every kind of file.** A `.st`, a `.json`, a `.cpp` and a
+  configuration file all open in the same Editor panel above the same tab bar.
+  The Structured Text editor used to be a panel of its own, which meant two bars
+  of open files over one set of files and a shipped layout arranging a panel that
+  no longer exists; and every backend drew its own ImGui window inside the panel
+  it was dispatched from, so a `.json` came to be shown in a floating window
+  titled with its own filename while the Editor panel behind it drew the same
+  backend again. The panel owns the window and a backend draws its contents; the
+  ST document is drawn by `EditorApp` calling three functions in the order the
+  panel calls them, because the keyboard and the unsaved prompt belong to the
+  panel while the signature help and the completion lists are separate windows
+  drawn after the document.
+- A project's own `.json` opens as text, and can be looked at as a tree instead.
+  Which one a `.json` gets is the file's role and not its extension, answered from
+  the open project: the configuration is the file the user is told to edit by hand,
+  and a tree has nothing to type into. "Open as Text" and "Open as Tree" are both
+  in the tree's context menu for any `.json`, they replace the tab rather than
+  adding a second one, and a `.json` outside any project is a tree as it always
+  was.
+
+### Fixed
+- A `FUNCTION` could not be parsed at all, new or edited. The generated header
+  wrote the name and a colon and stopped, so the type after it was empty:
+  `FUNCTION Foo : `, which st2cpp rejects before it reaches a single line of the
+  body. The POU type and the return type are two fields, and the second one had
+  nowhere to go — it was asked for in the add-METHOD dialog and dropped
+  afterwards, so a method added to a `FUNCTION` lost its type too. The return
+  type is now written into the header, read back when the file is opened rather
+  than carried in memory across the two, and editable next to the POU type for a
+  file that was generated before this, which is what the ones on disk are. A
+  diagnostic that falls outside every editor's own lines says so in those words
+  and names the generated line, because "see the Output panel" pointed at a file
+  the user had never opened.
+- A backend could open a file behind the tab bar's back. The JSON viewer had an
+  "Open File" button of its own, which loaded straight into the viewer: the bar
+  then answered "nothing is open" for a document that was on screen and could not
+  be reached again. Every route goes through `EditorApp::openFile` now.
+- The text and C++ editors each opened a window titled with the name of the file
+  they were editing, which floated away from the panel it was dispatched from.
+
 ## [0.1.1] - 2026-10-01
 
 ### Added
@@ -133,8 +192,8 @@
   display, so everything visual is verified by compiling it, by a headless ImGui
   test that drives real frames, or by asking. Anything that is a question of
   appearance should be treated as unverified until somebody has looked at it.
-- "Open as Text" is only offered on `.json`, which is the only backend that
-  cannot show its file as text.
+- "Open as Text" and "Open as Tree" are only offered on `.json`, which is the
+  only backend that cannot show its file as text.
 - A terminal tab cannot be reordered by dragging. ImGui would move the tab and
   the panel would keep drawing the shell it thinks is there, so it is not offered
   rather than offered and wrong.
