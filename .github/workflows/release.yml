@@ -34,10 +34,38 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential cmake git \
+            build-essential cmake git ccache \
             libgl1-mesa-dev libglu1-mesa-dev freeglut3-dev \
             libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev \
             libglm-dev
+
+      # Every compile in this job goes through ccache, including the ones the
+      # test suites run themselves: they call g++ and gcc by name, so the
+      # wrappers are found by PATH rather than configured per build system.
+      #
+      # The three builds are the whole cost of the job — the IDE, st2cpp and the
+      # test suites' own objects — and between two releases almost none of that
+      # changed, so a restored cache turns a ten minute run into the time it
+      # takes to configure. The key is the commit, with a prefix to fall back on,
+      # because ccache itself decides what is a hit: an older cache is worth
+      # restoring and nothing is rebuilt that would not have been rebuilt anyway.
+      - name: Restore the compilation cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ github.sha }}
+          restore-keys: ccache-
+
+      - name: Put ccache in front of the compilers
+        run: |
+          set -eu
+          mkdir -p "$HOME/ccache-bin"
+          for compiler in cc c++ gcc g++; do
+            ln -sf "$(command -v ccache)" "$HOME/ccache-bin/$compiler"
+          done
+          echo "$HOME/ccache-bin" >> "$GITHUB_PATH"
+          echo "CCACHE_DIR=$HOME/.cache/ccache" >> "$GITHUB_ENV"
+          echo "CCACHE_MAXSIZE=1G" >> "$GITHUB_ENV"
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -51,6 +79,10 @@ jobs:
         run: |
           cmake -S third_party/st2cpp -B build/st2cpp -DCMAKE_BUILD_TYPE=Release
           cmake --build build/st2cpp -j"$(nproc)"
+
+      - name: Report the cache
+        if: always()
+        run: ccache --show-stats || true
 
       - name: Test
         run: |
@@ -180,7 +212,33 @@ jobs:
         run: |
           set -eu
           version="${RELEASE_TAG#v}"
-          gh release upload "$RELEASE_TAG" \
-            "undoStudio-$version-linux-x86_64.tar.gz" \
-            "undoStudio-$version-linux-x86_64.tar.gz.sha256" \
-            --clobber
+          archive="undoStudio-$version-linux-x86_64.tar.gz"
+
+          # One file at a time, and retried, because the two together were not
+          # reliable: v0.1.2 published with the checksum attached and the
+          # archive missing, the upload of the archive answered 403 while the
+          # 103-byte one beside it succeeded, and `gh release upload` sends them
+          # concurrently. The retry covers a refusal that is not about the
+          # permission, which is what the token has and always had.
+          for attempt in 1 2 3 4 5; do
+            missing=0
+            for file in "$archive" "$archive.sha256"; do
+              if gh release upload "$RELEASE_TAG" "$file" --clobber; then
+                echo "attached $file"
+              else
+                echo "upload of $file failed (attempt $attempt)"
+                missing=1
+              fi
+            done
+            if [ "$missing" -eq 0 ]; then break; fi
+            sleep $((attempt * 10))
+          done
+
+          # The archive is what somebody downloads, so its absence has to fail
+          # the job rather than leave a release that looks finished and is not.
+          attached="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          for file in "$archive" "$archive.sha256"; do
+            grep -qxF "$file" <<<"$attached" || {
+              echo "the release does not carry $file"; echo "$attached"; exit 1; }
+          done
+          echo "the release carries:"; echo "$attached"

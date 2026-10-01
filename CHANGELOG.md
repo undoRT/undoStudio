@@ -58,6 +58,14 @@
   be reached again. Every route goes through `EditorApp::openFile` now.
 - The text and C++ editors each opened a window titled with the name of the file
   they were editing, which floated away from the panel it was dispatched from.
+- A release could publish without its archive. The upload of the tarball was
+  refused with a 403 while the 103-byte checksum beside it went through, the two
+  having been sent concurrently, and the job did not try again: v0.1.2 was
+  published with a checksum for a file nobody could download. The files are sent
+  one at a time and retried, and the job fails if the release does not end up
+  carrying both, because a release that looks finished and is not is worse than a
+  failed run. The same job now keeps a compilation cache between releases, which
+  is most of what made it take ten minutes.
 
 ## [0.1.1] - 2026-10-01
 
