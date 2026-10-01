@@ -1797,22 +1797,32 @@ static bool overlaysOverlap(const ImRect& a, const ImRect& b)
 ImVec2 overlayPosition(const ImVec2& anchor, const ImVec2& editorMin, const ImVec2& editorMax, float width,
                        float height, bool preferAbove, const ImRect& avoid)
 {
-   const ImVec2 display = ImGui::GetIO().DisplaySize;
+   // The editor hands over the geometry of the cursor and its own area in the
+   // viewport's screen coordinates. SetNextWindowPos() takes coordinates in the
+   // same space for a window that belongs to that viewport, and the overlays are
+   // meant to stay inside the main window so that ImGui merges them into a single
+   // platform window rather than creating a second one.
+   const ImVec2 display = ImGui::GetMainViewport()->Size;
+   const ImVec2 cursor = anchor;
+   const ImVec2 editorTopLeft = editorMin;
+   const ImVec2 editorBottomRight = editorMax;
+   const ImRect taken = avoid;
+
    const float lineHeight = ImGui::GetTextLineHeight();
 
-   const float below = anchor.y + lineHeight;
-   const float above = anchor.y - height;
+   const float below = cursor.y + lineHeight;
+   const float above = cursor.y - height;
    const float first = preferAbove ? above : below;
    const float second = preferAbove ? below : above;
 
    const auto boxAt = [&](float y) {
-      return ImRect(ImVec2(anchor.x, y), ImVec2(anchor.x + width, y + height));
+      return ImRect(ImVec2(cursor.x, y), ImVec2(cursor.x + width, y + height));
    };
    const auto inEditor = [&](float y) {
-      return y >= editorMin.y - 1.0f && y + height <= editorMax.y + 1.0f;
+      return y >= editorTopLeft.y - 1.0f && y + height <= editorBottomRight.y + 1.0f;
    };
    const auto clearOf = [&](float y) {
-      return avoid.Max.y <= avoid.Min.y || !overlaysOverlap(boxAt(y), avoid);
+      return taken.Max.y <= taken.Min.y || !overlaysOverlap(boxAt(y), taken);
    };
 
    float y = first;
@@ -1822,8 +1832,8 @@ ImVec2 overlayPosition(const ImVec2& anchor, const ImVec2& editorMin, const ImVe
          // Both sides of the cursor are spoken for. Stacking under the other overlay
          // keeps the most recent one, the one being looked at, next to the text;
          // stacking over it is the fallback when there is no room underneath.
-         const float stackedBelow = avoid.Max.y;
-         const float stackedAbove = avoid.Min.y - height;
+         const float stackedBelow = taken.Max.y;
+         const float stackedAbove = taken.Min.y - height;
          if (avoid.Max.y > avoid.Min.y && inEditor(stackedBelow)) {
             y = stackedBelow;
          } else if (inEditor(stackedAbove)) {
@@ -1835,7 +1845,14 @@ ImVec2 overlayPosition(const ImVec2& anchor, const ImVec2& editorMin, const ImVe
    }
    y = std::max(0.0f, std::min(y, std::max(0.0f, display.y - height)));
 
-   const float x = std::max(0.0f, std::min(anchor.x, std::min(editorMax.x, display.x) - 4.0f));
+   // The width counts here too: the right edge is what decides whether the window
+   // is merged into the main viewport, and a list hanging past it gets a viewport
+   // of its own. Clamp against both the editor area and the viewport size.
+   const float rightLimit = std::min(editorBottomRight.x, display.x + ImGui::GetMainViewport()->Pos.x) - width - 4.0f;
+   const float leftLimit = ImGui::GetMainViewport()->Pos.x;
+   const float x = std::max(leftLimit, std::min(cursor.x, rightLimit));
+   const float topLimit = ImGui::GetMainViewport()->Pos.y;
+   y = std::max(topLimit, std::min(y, ImGui::GetMainViewport()->Pos.y + display.y - height));
    return ImVec2(x, y);
 }
 
@@ -4507,6 +4524,40 @@ ImGuiKey STApp::handleSignatureHelpKeys()
    return ImGuiKey_None;
 }
 
+bool STApp::anyOverlayOpen() const
+{
+   return m_completionEditor != nullptr || m_signatureEditor != nullptr || statementCompletionOpen();
+}
+
+/**
+ * @brief Claim the navigation keys for whichever overlay is open
+ *
+ * NavProcessKey() polls the arrows and the two page keys with
+ * ImGuiKeyOwner_NoOwner, so it skips a key that has an owner. Claiming them here
+ * is what stops an arrow press from also asking ImGui to move the focus and to
+ * scroll whatever it lands on into view, which is the body moving under the list.
+ *
+ * Nothing is released here. ImGui gives ownership up on the frame after the key
+ * comes up, and clearing it on the way would take the key from whatever the panel
+ * underneath is doing with it.
+ */
+void STApp::claimOverlayNavigationKeys()
+{
+   if (!anyOverlayOpen()) {
+      return;
+   }
+
+   // A window nobody can focus is the honest owner: the lists are drawn with
+   // NoNavFocus, and this is the keyboard half of the same statement. The hash is
+   // taken from a constant rather than from a window ID, because the list is
+   // redrawn every frame and its ID would have to be looked up to be the owner of
+   // a key pressed before the frame that draws it.
+   const ImGuiID owner = ImHashStr("##undoStudio.overlayKeys");
+   for (const ImGuiKey key : {ImGuiKey_UpArrow, ImGuiKey_DownArrow, ImGuiKey_PageUp, ImGuiKey_PageDown}) {
+      ImGui::SetKeyOwner(key, owner);
+   }
+}
+
 // ============================================================================
 // METHOD management (FUNCTION_BLOCK only)
 // ============================================================================
@@ -5962,6 +6013,11 @@ void STApp::renderEditorPanel()
    renderSignatureHelp();
    renderMemberCompletion();
    renderStatementCompletion();
+
+   // Claimed last, and only once the lists have had their frame: NewFrame of the
+   // next one is where a key press is turned into a navigation request, so the
+   // claim has to exist by the end of this frame to be in time for it.
+   claimOverlayNavigationKeys();
 }
 
 // ============================================================================
