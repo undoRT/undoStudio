@@ -72,6 +72,38 @@ build_archive() {
   # dependencies from: a header edit has to rebuild what included it, or a test
   # goes on passing against the previous build. -j is what makes the compile
   # parallel, and it is most of the saving.
+
+  # The object directory belongs to one tree. The generated dependency files name
+  # every source by the absolute path it was compiled from, and make reads a file
+  # that is not there as a missing dependency, so a cache left by another clone —
+  # or by a tree that was moved, which is the same clone under a new name — says
+  # of a source that is right there that there is no rule to make it. A second
+  # tree is the normal case rather than an edge one: a worktree, a clone kept to
+  # try something out, and the release workflow's own checkout all end up here,
+  # because this directory is keyed on nothing but the user's temporary directory.
+  #
+  # The whole cache goes, and not the dependency files that happen to be wrong.
+  # An object and its dependency file are the same fact: the file says which
+  # sources the object was built from, so an object beside a foreign dependency
+  # file is that tree's object, and dropping the file alone leaves make with an
+  # object it has no reason to rebuild and a source list it cannot check. The
+  # marker catches the case a dependency file cannot, which is a cache whose files
+  # were written before this was a problem worth handling.
+  local foreign=0
+  if [ -d "$OUT/obj" ]; then
+    while IFS= read -r -d '' dep; do
+      if ! grep -qF "$ROOT" "$dep"; then
+        foreign=1
+        break
+      fi
+    done < <(find "$OUT/obj" -name '*.d' -print0 2>/dev/null)
+  fi
+  if [ "$foreign" -eq 1 ] || { [ -f "$OUT/tree" ] && [ "$(cat "$OUT/tree")" != "$ROOT" ]; }; then
+    echo "  NOTE  the archive cache belonged to another tree, discarded"
+    rm -rf "$OUT/obj" "$ARCHIVE"
+  fi
+  printf '%s\n' "$ROOT" > "$OUT/tree"
+
   if ! make -C "$TESTS" -f Makefile ROOT="$ROOT" OUT="$OUT" \
         -j"$(nproc 2>/dev/null || echo 4)" > "$OUT/archive.build.log" 2>&1; then
     # The log is printed as well as named. A build that fails on CI says
