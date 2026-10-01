@@ -120,7 +120,7 @@ Compile reports that it cannot find the transpiler and everything else works.
 
 Both suites run headless, so no GPU and no display are needed.
 
-The core: the state files, and the recent projects list:
+The core: the state files, and the recent projects and files lists:
 
 ~~~bash
 ./src/core/tests/run_tests.sh
@@ -152,18 +152,47 @@ The IDE writes its own state next to the layout, and each file has one owner:
 | File | What it holds |
 |---|---|
 | `undoStudio_layout.ini` | the dock layout, which a first run takes from `resources/` |
-| `undoStudio.ini` | the window size, and the projects opened recently |
+| `undoStudio.ini` | the window size, the projects opened recently, and the files opened recently |
 | `undoApp.Editor.ini` | where the Variables and Body sections are divided |
 | `undoApp.Terminal.ini` | the size the terminal is drawn at |
 
 All four are yours to edit and are not tracked. Delete any of them and that part
 of the setup goes back to its default.
 
-The recent projects are under **File > Open Recent**, or `Ctrl+R`. A project is
-not reopened on its own: the list is one click away and starting the IDE with
-somebody's project already on disk is a surprise. `Ctrl+R` is left alone while a
-code editor or the terminal has the keyboard, where the same two keys mean
-something else.
+The recent projects are under **File > Open Recent Projects**, or `Ctrl+R`. A
+project is not reopened on its own: the list is one click away and starting the
+IDE with somebody's project already on disk is a surprise. `Ctrl+R` is left
+alone while a code editor or the terminal has the keyboard, where the same two
+keys mean something else.
+
+The recent **files** are under **File > Open Recent Files**, or `Ctrl+P`, and
+they are remembered the same way: nothing is reopened on its own, the list is one
+key away. A file remembered here follows a rename or a move: rename it in the
+tree and the entry is rewritten in place, rather than becoming a second name for a
+file that is no longer there. A file is remembered however it was reached — clicked once in the tree,
+opened from the menu, dropped onto the window — and opening it puts it back where
+it was, at the cursor and the pane you left it in. The list holds the newest first
+and keeps a file that has since been deleted or moved, showing it as missing
+rather than dropping it, so that an entry disappearing is never a mistake. The two
+lists share one length, because one remembered-things-too-many is enough.
+
+## Tabs
+
+A file opened in the tree gets a tab and keeps it, and a second click is not
+needed to hold on to it: the tab bar is where you look to see what is open, and a
+file that was there a moment ago and is not any more reads as the editor losing
+files. Closing a tab unloads the file; closing the project clears them all.
+
+Tabs follow the file. Renaming or moving a file in the tree moves its tab with it,
+and the editor is told where the file now lives, so `Ctrl+S` writes to the new name
+instead of leaving a copy at the old one — which also holds for the text kept
+while the file is not on screen, and for a file inside a folder that is renamed.
+Deleting a file, or a folder of them, closes the tabs that pointed at it rather
+than leaving rows that offer to open something that is gone.
+
+**Open as Text**, on a `.json` in the tree's context menu, gives the file a tab of
+its own rather than loading the text behind the editors' backs: it is one file, so
+it is one row in the bar, and the tab is the text one.
 
 ## Repository layout
 
