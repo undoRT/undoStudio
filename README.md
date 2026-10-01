@@ -1,5 +1,7 @@
 # undoStudio
 
+What changed in each release is in [CHANGELOG.md](CHANGELOG.md).
+
 ## Overview
 
 undoStudio is the integrated development environment (IDE) of the undoRT ecosystem.
