@@ -1,16 +1,15 @@
 /**
  * @file undoAppText.hpp
  * @brief Header of the plain-text editor undoApp
- * @ingroup undoapps
- *
- * The fallback backend used by undoApp.Editor when a file has an
- * extension that is neither `.st` nor `.json`. Provides a single
- * TextEditor with no syntax highlighting and a Save button.
- *
  * @author Salvatore Bamundo
  * @date July 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ *
+ * The fallback backend: a single TextEditor with no syntax highlighting, and the
+ * Save and Close buttons. Used for a file whose extension names none of the other
+ * backends, and for a JSON file this project owns, which has to be typed into and
+ * so cannot be the tree.
  */
 
 #pragma once
@@ -60,14 +59,8 @@ public:
    /// @brief Clear the editor and forget the current file
    void closeFile();
 
-   /// @brief Window title used by the unified "Editor" panel
-   const char* getWindowTitle() const { return m_windowTitle.c_str(); }
-
    /// @brief Render the editor inside the unified "Editor" ImGui window
    void renderEditorPanel();
-
-   /// @brief Render the (currently unused) output panel
-   void renderOutputPanel();
 
    /**
     * @brief Put what is on screen back into an editor, under a new file name
@@ -103,7 +96,6 @@ private:
    void setupEditor();
 
    bool m_initialized = false;
-   std::string m_windowTitle = "Editor";
    std::string m_currentFilePath;
    std::unique_ptr<TextEditor> m_editor;
    std::vector<std::string> m_outputLines;

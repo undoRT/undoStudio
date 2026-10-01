@@ -1,6 +1,12 @@
-// Where the ST editor's overlays are put when the window is not at the screen's
-// top left corner.
-//
+/**
+ * @file overlay_placement.cpp
+ * @brief Where the ST editor's overlays are put when the window is not at the screen's top left corner
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // The three overlays — the signature help, the member list and the statement list
 // — are windows of their own, placed with SetNextWindowPos(), which takes a
 // position relative to the viewport they go into. The editor reports where its
@@ -34,6 +40,7 @@
 #define private public
 #include <TextEditor.h>
 #include "undoAppST.hpp"
+#include "st_editor_frame.hpp"
 #undef private
 
 #include "fake_viewports.hpp"
@@ -64,7 +71,7 @@ static void frameWithBodyEditorFocused(STApp& app) {
   // top-level window that is not docked is given a viewport of its own, which
   // would be a second window before the overlays had done anything at all.
   ImGui::SetNextWindowViewport(ImGui::GetMainViewport()->ID);
-  app.renderEditorPanel();
+  stEditorFrame(app);
   ImGui::EndFrame();
   ImGui::UpdatePlatformWindows();
 }

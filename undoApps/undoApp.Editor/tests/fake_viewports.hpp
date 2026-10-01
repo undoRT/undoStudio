@@ -1,5 +1,12 @@
-// A viewport-capable ImGui context with no window behind it.
-//
+/**
+ * @file fake_viewports.hpp
+ * @brief A viewport-capable ImGui context with no window behind it
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // The ST editor's overlays are placed with SetNextWindowPos(), whose coordinates
 // are relative to the viewport they go into, and a window is merged into the main
 // viewport only if its rectangle is inside that viewport's. Both facts are

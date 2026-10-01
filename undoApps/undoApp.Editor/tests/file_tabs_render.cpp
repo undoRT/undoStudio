@@ -1,5 +1,12 @@
-// The bar of open files, drawn.
-//
+/**
+ * @file file_tabs_render.cpp
+ * @brief The bar of open files, drawn
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // The bar is drawn before the editor it sits above, so anything it does to the
 // style stack is still held when the editor runs. A push without its pop, or a
 // pop without its push, does not stay a small mistake: the next frame starts on a
@@ -42,10 +49,10 @@ static void writeFile(const fs::path& p, const std::string& body) {
    out << body;
 }
 
-/// One frame with the bar drawn in it, as the ST Editor panel does.
+/// One frame with the bar drawn in it, as the Editor panel does.
 static void frameWithBar(EditorApp& app) {
    ImGui::NewFrame();
-   ImGui::Begin("ST Editor", nullptr, ImGuiWindowFlags_NoCollapse);
+   ImGui::Begin("Editor", nullptr, ImGuiWindowFlags_NoCollapse);
    app.renderFileTabs();
    ImGui::End();
    ImGui::EndFrame();
@@ -64,7 +71,7 @@ static float roomLeftForEditor(EditorApp& app, float panelHeight) {
    for (int f = 0; f < 3; ++f) {
       ImGui::NewFrame();
       ImGui::SetNextWindowSize(ImVec2(1200.0f, panelHeight));
-      ImGui::Begin("ST Editor", nullptr, ImGuiWindowFlags_NoCollapse);
+      ImGui::Begin("Editor", nullptr, ImGuiWindowFlags_NoCollapse);
       app.renderFileTabs();
       left = ImGui::GetContentRegionAvail().y;
       ImGui::End();

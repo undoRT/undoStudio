@@ -1,8 +1,6 @@
 /**
  * @file undoAppST.hpp
  * @brief Header of the Structured Text editor undoApp
- * @ingroup undoapps
- *
  * @author Salvatore Bamundo
  * @date July 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -152,8 +150,28 @@ public:
    // Panel rendering methods
    // ============================================================================
 
-   /// @brief Render the ST Editor panel (two-pane editor with splitter)
-   void renderEditorPanel();
+   /// @brief Do the ST editor's per-frame work, before any document is drawn
+   ///
+   /// Keyboard shortcuts, the unsaved-changes state, and the two popups that have
+   /// to be opened and closed inside the panel that draws them: ImGui resolves a
+   /// popup against the window it is opened in, so one opened anywhere else is
+   /// never found again.
+   void beginEditorFrame();
+
+   /// @brief Draw the Structured Text document, inside the editor panel
+   ///
+   /// The panel belongs to EditorApp, which draws the bar of open files and then
+   /// asks for whichever backend the file on screen needs. This is the ST one, so
+   /// it draws no window of its own: a second Begin here would be a second window
+   /// with the panel's name, laid out twice in one frame.
+   void renderDocument();
+
+   /// @brief Draw the ST editor's overlays, after the document
+   ///
+   /// The signature help and the two completion lists are separate windows drawn
+   /// after the document so that the editor cannot clip them, and the navigation
+   /// keys are claimed last so that the claim exists by the end of the frame.
+   void endEditorFrame();
 
    /// @brief Render the Output panel (validation and compilation messages)
    void renderOutputPanel();
@@ -219,10 +237,7 @@ public:
    /// @brief Close the currently open ST file and clear the editor state
    void closeFile();
 
-/// @brief Setter for function return type
-    void setFunctionReturnType(const std::string& returnType) { m_functionReturnType = returnType; }
-
-   /// @brief Handle keyboard shortcuts
+/// @brief Handle keyboard shortcuts
    bool handleKeyboardShortcuts();
 
    // ============================================================================
@@ -296,11 +311,12 @@ public:
    /// @param tabName METHOD name, or empty for the POU tab
    void requestTabSelection(const std::string& tabName);
 
-   /// @brief Ask the ST Editor panel to show the "Add Method" dialog
+   /// @brief Ask the ST document to show the "Add Method" dialog
    ///
-   /// Meant for callers outside this panel, such as the tree's context menu: the
-   /// popup lives in the ST Editor window and a popup opened in another window is
-   /// never submitted, so the request is carried over and opened there.
+   /// Meant for callers outside the Editor panel, such as the tree's context
+   /// menu: the popup lives in the window the document is drawn in and a popup
+   /// opened in another window is never submitted, so the request is carried over
+   /// and opened there.
    void requestAddMethodDialog();
 
    /// @brief Take the pending "Add Method" request, if there is one
@@ -563,7 +579,7 @@ private:
    bool m_showRenamePopup = false;
    bool m_showNewPOUPopup = false;
    bool m_showAddMethodPopup = false;           ///< True if add method popup is visible
-   bool m_addMethodDialogPending = false;       ///< Asked for from another panel; the ST Editor opens the popup
+   bool m_addMethodDialogPending = false;       ///< Asked for from another panel; the document opens the popup
 
    // ============================================================================
    //  Member completion

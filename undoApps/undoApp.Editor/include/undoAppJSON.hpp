@@ -1,8 +1,6 @@
 /**
  * @file undoAppJSON.hpp
  * @brief Header of the JSON Viewer undoApp
- * @ingroup undoapps
- *
  * @author Salvatore Bamundo
  * @date July 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -125,8 +123,6 @@ private:
    // Popup states
    // ============================================================================
 
-   bool m_showOpenFilePopup = false;  ///< True if open file popup is visible
-   char m_filePathBuffer[1024] = {0}; ///< Buffer for file path input
 };
 
 } // namespace JSON

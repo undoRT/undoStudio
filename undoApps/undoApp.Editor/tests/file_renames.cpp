@@ -1,5 +1,12 @@
-// What happens to a tab when the file behind it is renamed, moved or deleted.
-//
+/**
+ * @file file_renames.cpp
+ * @brief What happens to a tab when the file behind it is renamed, moved or deleted
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // Every part of an open file is filed under its path: the tab's ImGui id, the key its
 // stashed text is held under, the path the editor is told to save to, and the entry in
 // the recent files list. A rename moves the file and none of those, and each one left

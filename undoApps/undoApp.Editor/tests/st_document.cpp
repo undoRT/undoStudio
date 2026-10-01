@@ -1,5 +1,12 @@
-// An open ST file, taken out and put back.
-//
+/**
+ * @file st_document.cpp
+ * @brief An open ST file, taken out and put back
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // Several files can be open at once, and each backend holds one, so switching
 // tabs means taking the file out whole and putting it back when it is shown
 // again. What that has to get right is the unsaved half: the only copy of what

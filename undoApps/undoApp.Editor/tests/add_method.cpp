@@ -1,5 +1,12 @@
-// Does creating a method actually add it?
-//
+/**
+ * @file add_method.cpp
+ * @brief Does creating a method actually add it
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // Reported from two places: the "+" on the editor tab bar, and "Add Method" in
 // the tree's context menu. The two do not go through the same code at all: the
 // tab opens a dialog, the tree used to call addMethod() directly with a fixed
@@ -105,7 +112,7 @@ int main() {
   }
 
   // What the tree's context menu does now, and what the "+" tab does: ask for the
-  // dialog, and let the ST Editor panel be the one that opens it.
+  // dialog, and let the Editor panel be the one that opens it.
   {
     STApp app;
     app.setupEditors();
@@ -113,7 +120,7 @@ int main() {
     app.m_newMethodName = "leftover";
     app.requestAddMethodDialog();
     check(app.m_addMethodDialogPending, "the request from the tree is pending");
-    check(app.consumeAddMethodDialogRequest(), "the ST Editor panel takes it");
+    check(app.consumeAddMethodDialogRequest(), "the Editor panel takes it");
     check(!app.consumeAddMethodDialogRequest(), "and only once, so the popup cannot be re-armed");
     check(!app.m_addMethodDialogPending, "the request is cleared once taken");
     check(app.m_newMethodName.empty() && app.m_newMethodReturnType.empty(),
@@ -121,7 +128,7 @@ int main() {
     check(countMethods(app) == 0, "and nothing was added yet, got " + std::to_string(countMethods(app)));
   }
 
-  // The "+" tab is in the ST Editor window itself, so it can still arm the popup
+  // The "+" tab is in the Editor window itself, so it can still arm the popup
   // directly, and the flag has to be cleared or the popup comes straight back.
   {
     STApp app;

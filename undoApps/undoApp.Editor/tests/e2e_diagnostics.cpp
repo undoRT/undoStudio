@@ -1,4 +1,12 @@
-// Headless end-to-end check of the real STApp layout + semantic token mapping.
+/**
+ * @file e2e_diagnostics.cpp
+ * @brief A diagnostic dump of the real STApp layout and its semantic token mapping
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 #include <imgui.h>
 #include <cstdio>
 #include <fstream>

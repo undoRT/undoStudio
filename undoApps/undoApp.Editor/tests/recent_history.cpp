@@ -1,5 +1,12 @@
-// What the editor remembers, and which opens keep a tab.
-//
+/**
+ * @file recent_history.cpp
+ * @brief What the editor remembers, and which opens keep a tab
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // Two things are covered here, and they are covered together because they are the
 // same decision seen from the two ends. The editor has one preview slot, so a file
 // opened by browsing past it is gone from every piece of UI the moment the next click

@@ -1,6 +1,12 @@
-// Exercises the UI-free member-access layer: what the '.' operator can reach
-// on a function block instance, and how a line is read at the cursor.
-//
+/**
+ * @file member_access.cpp
+ * @brief The UI-free member-access layer: what '.' can reach on a function block instance
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // Deliberately does not create an ImGui context, so it runs without a display.
 #include "undoAppSTSemantic.hpp"
 #include "lexer/Lexer.h"

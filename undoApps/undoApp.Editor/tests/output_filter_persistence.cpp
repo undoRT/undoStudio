@@ -1,5 +1,12 @@
-// The Output panel's switches, clicked.
-//
+/**
+ * @file output_filter_persistence.cpp
+ * @brief The Output panel's switches, clicked
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // output_filter.cpp proves the filter does the right thing to a list of lines.
 // That was never the bug, and it could never have caught it: the bug was that
 // nothing kept the answer. renderOutputPanel() built its OutputFilter as a local,
@@ -39,11 +46,18 @@ static void check(bool ok, const std::string& what) {
 }
 
 /// One frame of the Output panel, at a size where every switch fits on one line.
+///
+/// The panel is the window ImGuiManager opened, not one renderOutputPanel opens
+/// for itself: a Begin in there was a second window laid out inside the first, so
+/// the draw list the switches were measured against belonged to whichever of the
+/// two happened to be the current window.
 static void frameOutput(STApp& app) {
    ImGui::NewFrame();
    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
    ImGui::SetNextWindowSize(ImVec2(1200.0f, 800.0f));
+   ImGui::Begin("ST Output", nullptr, ImGuiWindowFlags_NoCollapse);
    app.renderOutputPanel();
+   ImGui::End();
    ImGui::EndFrame();
 }
 
@@ -73,7 +87,9 @@ static std::vector<ImVec2> switchCentres(STApp& app) {
    ImGui::NewFrame();
    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
    ImGui::SetNextWindowSize(ImVec2(1200.0f, 800.0f));
+   ImGui::Begin("ST Output", nullptr, ImGuiWindowFlags_NoCollapse);
    app.renderOutputPanel();
+   ImGui::End();
    // The window outlives its Begin/End pair: it stays in the context until the frame
    // is over, which is what makes reading its draw list here rather than after
    // EndFrame() possible at all.

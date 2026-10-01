@@ -1,7 +1,10 @@
 /**
  * @file undoAppSTSnippet.hpp
  * @brief Statement skeletons offered by the editor's suggestion list
- * @ingroup undoapps
+ * @author Salvatore Bamundo
+ * @date July 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  *
  * A snippet is the text the editor writes out when a suggestion is accepted:
  * typing IF and accepting it leaves the THEN, the body and the END_IF in place,
@@ -14,11 +17,6 @@
  * The mapping from a typed word to a skeleton, and the writing of a skeleton at a
  * line, are kept free of any UI dependency so they can be exercised without a
  * graphics context.
- *
- * @author Salvatore Bamundo
- * @date July 2026
- * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  */
 
 #pragma once

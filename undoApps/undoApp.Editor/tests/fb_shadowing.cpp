@@ -1,3 +1,12 @@
+/**
+ * @file fb_shadowing.cpp
+ * @brief A diagnostic dump of findDeclaration: a method call, and a name a method shadows
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 #include <imgui.h>
 #include <cstdio>
 #include <string>

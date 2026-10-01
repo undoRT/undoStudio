@@ -1,3 +1,12 @@
+/**
+ * @file project_registry.cpp
+ * @brief A diagnostic dump of the project registry and of the descriptor built directly
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 #include <imgui.h>
 #include <cstdio>
 #include <string>

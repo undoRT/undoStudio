@@ -1,3 +1,12 @@
+/**
+ * @file cross_file_and_tree.cpp
+ * @brief A declaration in a sibling file: it resolves, and its method tab can be reached
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 #include <imgui.h>
 #include <cstdio>
 #include <string>
@@ -13,6 +22,7 @@
 #define private public
 #include <TextEditor.h>
 #include "undoAppST.hpp"
+#include "st_editor_frame.hpp"
 #include "workspace_fixture.hpp"
 #undef private
 
@@ -23,12 +33,17 @@ static void check(bool ok, const std::string& w) {
   std::printf("  %s %s\n", ok ? "ok  " : "FAIL", w.c_str());
   if (!ok) ++failures;
 }
+// The Editor panel and the Workspace panel, each inside the window ImGuiManager
+// would have opened. Both bodies now draw nothing but their contents, so a caller
+// that left the Begin off was calling an End with nothing to end.
 static void frame(STApp& app) {
   io().AddMousePosEvent(io().MousePos.x, io().MousePos.y);
   ImGui::NewFrame();
   ImGui::SetNextWindowSize(ImVec2(1200, 800));
-  app.renderEditorPanel();
+  stEditorFrame(app);
+  ImGui::Begin("Workspace");
   app.renderWorkspacePanel();
+  ImGui::End();
   ImGui::EndFrame();
 }
 

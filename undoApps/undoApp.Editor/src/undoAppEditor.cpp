@@ -1,19 +1,23 @@
 /**
  * @file undoAppEditor.cpp
  * @brief Main entry point for the unified undoApp.Editor plugin
- * @ingroup undoapps
- *
- * This file implements the plugin entry point and routes the single
- * public openFile(path) call to the right backend (ST, JSON, Text)
- * based on the file extension.
- *
  * @author Salvatore Bamundo
  * @date July 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ *
+ * This file implements the plugin entry point and routes the single
+ * public openFile(path) call to the right backend (ST, JSON, Text)
+ * based on the file extension.
  */
 
 #include "undoAppEditor.hpp"
+// For the three calls that draw the Structured Text document: this file's own
+// header is the app that owns the Editor panel, and the ST editor is a backend
+// of it like the others. Both headers are included here rather than in each
+// other, so the plugin does not depend on which one a caller happens to reach
+// first.
+#include "undoAppST.hpp"
 #include "undoStudio/ui/ImGuiManager.hpp"
 #include "undoStudio/core/Application.hpp"
 #include "undoStudio/core/ProjectManager.hpp"
@@ -215,12 +219,17 @@ void EditorApp::openFile(const std::string& path, bool pin)
    DocKind kind = DocKind::Text;
    if (ext == ".st") {
       kind = DocKind::ST;
-   } else if (ext == ".json") {
+   } else if (ext == ".json" && !undoStudio::core::ProjectManager::getInstance().isConfigFile(path)) {
       kind = DocKind::JSON;
    } else if (ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".cxx" || ext == ".h" || ext == ".hpp" || ext == ".hh"
               || ext == ".hxx") {
       kind = DocKind::Cpp;
    }
+   // A project's own configuration is JSON, and so would go to the JSON viewer, which
+   // draws a tree and has nothing to type into. These are the files the user is told
+   // to edit by hand -- exports.json holds the PROGRAM order, a task file its cycle
+   // time -- so they are opened as text, which is what they were before the format
+   // changed. Every other .json still gets the viewer.
 
    openDocument(path, kind, pin);
 }
@@ -772,6 +781,50 @@ void EditorApp::openFileAsText(const std::string& path)
    openDocument(path, DocKind::Text, /*pin=*/true);
 }
 
+void EditorApp::openFileAsTree(const std::string& path)
+{
+   if (path.empty()) {
+      std::cerr << "[undoApp.Editor] openFileAsTree called with empty path" << std::endl;
+      return;
+   }
+
+   std::cout << "[undoApp.Editor] Opening JSON in the tree viewer: " << path << std::endl;
+
+   // The mirror of openFileAsText, and the same reason: a file is one file and gets
+   // one tab, so a document already open with another backend is closed and reopened
+   // with this one. Its stash goes with it, for the same reason as there: it was
+   // stashed under the backend being dropped, and the text it holds is the file,
+   // which is on disk either way.
+   const size_t index = documentIndex(path);
+   if (index != kNoIndex && m_open.documents()[index].kind != DocKind::JSON) {
+      // The kind is read before the tab is closed, because afterwards there is no
+      // tab left to read it from, and it is what says which backend to let go of.
+      const DocKind dropped = m_open.documents()[index].kind;
+      const bool wasActive = (m_open.active() == path);
+      dropStashes(path);
+      m_open.close(path);
+      if (wasActive) {
+         // Nothing is on screen now, and openDocument below is what puts the tree
+         // there. Leaving the other backend loaded would leave two of them holding
+         // one file, and only one of them is ever drawn.
+         switch (dropped) {
+         case DocKind::Text:
+            TextApp::getInstance().closeFile();
+            break;
+         case DocKind::Cpp:
+            CppApp::getInstance().closeFile();
+            break;
+         default:
+            break;
+         }
+         m_currentFilePath.clear();
+         m_currentFileType = FileType::None;
+      }
+   }
+
+   openDocument(path, DocKind::JSON, /*pin=*/true);
+}
+
 void EditorApp::buildFileTree(FileNode& node, const std::string& rootPath)
 {
    node.children.clear();
@@ -1002,141 +1055,138 @@ void EditorApp::renderWorkspacePanel()
    auto& pm = undoStudio::core::ProjectManager::getInstance();
    auto& imguiManager = undoStudio::ui::ImGuiManager::getInstance();
 
-   if (ImGui::Begin("Workspace")) {
-      // A project picked from the menu bar's recent list, or with Ctrl+R. The menu
-      // is the core and this workspace is the undoApp that has to rebuild its
-      // tree, so the pick arrives as a request rather than as a call.
-      {
-         std::string requested;
-         if (const std::string* path = imguiManager.consumeOpenProjectRequest(requested)) {
-            openProject(*path);
-         }
-      }
-
-      // A file named on the command line or dropped onto the window. It is
-      // drained one at a time rather than taken in a batch, so a drop of several
-      // opens them in the order they were given and each one's errors are reported
-      // on its own: a drop of a dozen files where the ninth is not readable says
-      // so, instead of the whole drop failing together.
-      while (true) {
-         std::string requestedFile;
-         const std::string* path = imguiManager.consumeOpenFileRequest(requestedFile);
-         if (path == nullptr) {
-            break;
-         }
-         // Asked for by name, so it keeps the tab. A file picked out of the recent list, or
-         // dropped on the window, is not browsing past it.
-         openFile(*path, /*pin=*/true);
-      }
-
-      // -----------------------------------------------------------------------
-      // Top toolbar
-      // -----------------------------------------------------------------------
-      if (pm.isProjectOpen()) {
-         ImGui::TextColored(ImVec4(0.0f, 0.8f, 0.4f, 1.0f), "[Project]");
-         ImGui::SameLine();
-         ImGui::Text("%s", pm.getProjectName().c_str());
-         ImGui::SameLine();
-         if (ImGui::SmallButton("Save")) {
-            pm.saveProject();
-         }
-         ImGui::SameLine();
-         if (ImGui::SmallButton("Close")) {
-            closeProject();
-         }
-      } else {
-         if (ImGui::Button("New Project")) {
-            m_showNewProjectPopup = true;
-            m_newProjectParent[0] = '\0';
-            m_newProjectName[0] = '\0';
-            m_newProjectAuthor[0] = '\0';
-         }
-         ImGui::SameLine();
-         if (ImGui::Button("Open Project")) {
-#ifdef USE_TINYFILEDIALOGS
-            const char* sel = tinyfd_selectFolderDialog("Open undoProject", "");
-            if (sel) {
-               openProject(sel);
-            }
-#else
-            std::string cmd = "zenity --file-selection --directory --title='Open undoProject' 2>/dev/null";
-            FILE* pipe = popen(cmd.c_str(), "r");
-            if (pipe) {
-               char buf[1024];
-               std::string result;
-               while (fgets(buf, sizeof(buf), pipe)) {
-                  result += buf;
-               }
-               pclose(pipe);
-               if (!result.empty() && result.back() == '\n') {
-                  result.pop_back();
-               }
-               if (!result.empty()) {
-                  openProject(result);
-               }
-            }
-#endif
-         }
-         ImGui::SameLine();
-         if (ImGui::Button("Select Workspace")) {
-            openWorkspaceDialog();
-         }
-         ImGui::SameLine();
-         if (ImGui::Button("Refresh")) {
-            refreshFileTree();
-         }
-      }
-
-      // -----------------------------------------------------------------------
-      // Secondary toolbar (project-specific or workspace-specific)
-      // -----------------------------------------------------------------------
-      ImGui::Separator();
-      if (pm.isProjectOpen()) {
-         if (ImGui::Button("+ PLC")) {
-            m_showAddPLCPopup = true;
-            m_addPLCName[0] = '\0';
-            m_addPLCDesc[0] = '\0';
-         }
-         ImGui::SameLine();
-         if (ImGui::Button("+ Task")) {
-            m_showAddTaskPopup = true;
-            m_addTaskName[0] = '\0';
-            m_addTaskPLC[0] = '\0';
-            m_addTaskCycleMs = 1;
-            m_addTaskPriority = 80;
-            m_addTaskCPU = -1;
-         }
-      } else if (!m_workspacePath.empty()) {
-         if (ImGui::Button("+ POU")) {
-            m_showNewPOUPopup = true;
-            m_newItemParent = m_workspacePath;
-            m_newPOUName.clear();
-            m_newPOUType = ST::POUType::Program;
-         }
-         ImGui::SameLine();
-         if (ImGui::Button("+ Folder")) {
-            m_showNewFolderPopup = true;
-            m_newItemParent = m_workspacePath;
-            m_newItemName.clear();
-         }
-         ImGui::SameLine();
-         if (ImGui::Button("+ File")) {
-            m_showNewFilePopup = true;
-            m_newFileParent = m_workspacePath;
-            m_newFileName.clear();
-         }
-      }
-
-      // -----------------------------------------------------------------------
-      // File tree
-      // -----------------------------------------------------------------------
-      if (!m_workspacePath.empty()) {
-         renderFileTree(m_rootNode);
-      } else if (!pm.isProjectOpen()) {
-         ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No workspace or project open.");
+   // A project picked from the menu bar's recent list, or with Ctrl+R. The menu
+   // is the core and this workspace is the undoApp that has to rebuild its
+   // tree, so the pick arrives as a request rather than as a call.
+   {
+      std::string requested;
+      if (const std::string* path = imguiManager.consumeOpenProjectRequest(requested)) {
+         openProject(*path);
       }
    }
-   ImGui::End();
+
+   // A file named on the command line or dropped onto the window. It is
+   // drained one at a time rather than taken in a batch, so a drop of several
+   // opens them in the order they were given and each one's errors are reported
+   // on its own: a drop of a dozen files where the ninth is not readable says
+   // so, instead of the whole drop failing together.
+   while (true) {
+      std::string requestedFile;
+      const std::string* path = imguiManager.consumeOpenFileRequest(requestedFile);
+      if (path == nullptr) {
+         break;
+      }
+      // Asked for by name, so it keeps the tab. A file picked out of the recent list, or
+      // dropped on the window, is not browsing past it.
+      openFile(*path, /*pin=*/true);
+   }
+
+   // -----------------------------------------------------------------------
+   // Top toolbar
+   // -----------------------------------------------------------------------
+   if (pm.isProjectOpen()) {
+      ImGui::TextColored(ImVec4(0.0f, 0.8f, 0.4f, 1.0f), "[Project]");
+      ImGui::SameLine();
+      ImGui::Text("%s", pm.getProjectName().c_str());
+      ImGui::SameLine();
+      if (ImGui::SmallButton("Save")) {
+         pm.saveProject();
+      }
+      ImGui::SameLine();
+      if (ImGui::SmallButton("Close")) {
+         closeProject();
+      }
+   } else {
+      if (ImGui::Button("New Project")) {
+         m_showNewProjectPopup = true;
+         m_newProjectParent[0] = '\0';
+         m_newProjectName[0] = '\0';
+         m_newProjectAuthor[0] = '\0';
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Open Project")) {
+#ifdef USE_TINYFILEDIALOGS
+         const char* sel = tinyfd_selectFolderDialog("Open undoProject", "");
+         if (sel) {
+            openProject(sel);
+         }
+#else
+         std::string cmd = "zenity --file-selection --directory --title='Open undoProject' 2>/dev/null";
+         FILE* pipe = popen(cmd.c_str(), "r");
+         if (pipe) {
+            char buf[1024];
+            std::string result;
+            while (fgets(buf, sizeof(buf), pipe)) {
+               result += buf;
+            }
+            pclose(pipe);
+            if (!result.empty() && result.back() == '\n') {
+               result.pop_back();
+            }
+            if (!result.empty()) {
+               openProject(result);
+            }
+         }
+#endif
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Select Workspace")) {
+         openWorkspaceDialog();
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Refresh")) {
+         refreshFileTree();
+      }
+   }
+
+   // -----------------------------------------------------------------------
+   // Secondary toolbar (project-specific or workspace-specific)
+   // -----------------------------------------------------------------------
+   ImGui::Separator();
+   if (pm.isProjectOpen()) {
+      if (ImGui::Button("+ PLC")) {
+         m_showAddPLCPopup = true;
+         m_addPLCName[0] = '\0';
+         m_addPLCDesc[0] = '\0';
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("+ Task")) {
+         m_showAddTaskPopup = true;
+         m_addTaskName[0] = '\0';
+         m_addTaskPLC[0] = '\0';
+         m_addTaskCycleMs = 1;
+         m_addTaskPriority = 80;
+         m_addTaskCPU = -1;
+      }
+   } else if (!m_workspacePath.empty()) {
+      if (ImGui::Button("+ POU")) {
+         m_showNewPOUPopup = true;
+         m_newItemParent = m_workspacePath;
+         m_newPOUName.clear();
+         m_newPOUType = ST::POUType::Program;
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("+ Folder")) {
+         m_showNewFolderPopup = true;
+         m_newItemParent = m_workspacePath;
+         m_newItemName.clear();
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("+ File")) {
+         m_showNewFilePopup = true;
+         m_newFileParent = m_workspacePath;
+         m_newFileName.clear();
+      }
+   }
+
+   // -----------------------------------------------------------------------
+   // File tree
+   // -----------------------------------------------------------------------
+   if (!m_workspacePath.empty()) {
+      renderFileTree(m_rootNode);
+   } else if (!pm.isProjectOpen()) {
+      ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No workspace or project open.");
+   }
 
    // =========================================================================
    // POPUP MODALS — fuori da Begin/End, attivi in ENTRAMBE le modalità.
@@ -1252,7 +1302,7 @@ void EditorApp::renderWorkspacePanel()
       if (m_addTaskPLC[0] != '\0' && !pm2.hasPLC(m_addTaskPLC)) {
          ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "PLC '%s' not found in project.", m_addTaskPLC);
       }
-      ImGui::TextDisabled("Programs can be added from exports.toml after creation.");
+      ImGui::TextDisabled("Programs can be added from exports.json after creation.");
       ImGui::BeginDisabled(m_addTaskName[0] == '\0' || m_addTaskPLC[0] == '\0');
       if (ImGui::Button("Add")) {
          undoStudio::core::TaskConfig t;
@@ -1356,7 +1406,6 @@ void EditorApp::renderWorkspacePanel()
       bool canCreate = !m_newPOUName.empty() && (m_newPOUType != ST::POUType::Function || !m_newPOUReturnType.empty());
       ImGui::BeginDisabled(!canCreate);
       if (ImGui::Button("Create")) {
-         ST::STApp::getInstance().setFunctionReturnType(m_newPOUReturnType);
          std::string fn = m_newPOUName;
          if (fn.size() < 3 || fn.substr(fn.size() - 3) != ".st") {
             fn += ".st";
@@ -1386,7 +1435,7 @@ void EditorApp::renderWorkspacePanel()
       if (ImGui::InputText("File Name (with extension)", nameBuf, sizeof(nameBuf))) {
          m_newFileName = nameBuf;
       }
-      ImGui::TextDisabled("e.g.  GVL.st  MyStruct.st  config.toml");
+      ImGui::TextDisabled("e.g.  GVL.st  MyStruct.st  config.json");
       ImGui::BeginDisabled(m_newFileName.empty());
       if (ImGui::Button("Create")) {
          createNewGenericFile(m_newFileParent, m_newFileName);
@@ -1550,7 +1599,8 @@ void EditorApp::renderFileTree(FileNode& node)
          ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.75f, 1.0f, 0.75f, 1.0f));
          break;
       case NodeRole::ExportsFile:
-      case NodeRole::TOMLFile:
+      case NodeRole::ConfigFile:
+      case NodeRole::JSONFile:
          ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.7f, 0.5f, 1.0f));
          break;
       case NodeRole::STFile:
@@ -1747,11 +1797,14 @@ void EditorApp::renderFileTree(FileNode& node)
          if (isJSON && ImGui::MenuItem("Open as Text")) {
             openFileAsText(node.path);
          }
+         if (isJSON && ImGui::MenuItem("Open as Tree")) {
+            openFileAsTree(node.path);
+         }
          if (isST && ImGui::MenuItem("Add Method")) {
-            // Ask the ST Editor panel to open its dialog rather than adding a
+            // Ask the ST document to open its dialog rather than adding a
             // method straight away with a fixed name, so this behaves exactly
             // like the "+" on the tab bar. It has to travel through the ST app
-            // because the popup belongs to the ST Editor window, not to this
+            // because the popup belongs to the Editor panel and not to this
             // Workspace one; OpenPopup does not cross windows.
             ST::STApp& st = ST::STApp::getInstance();
             st.openFile(node.path);
@@ -1906,11 +1959,6 @@ void EditorApp::renderFileTabs()
    ImGui::EndChild();
 }
 
-void renderOpenFileTabs()
-{
-   EditorApp::getInstance().renderFileTabs();
-}
-
 void EditorApp::renderEditorPanel()
 {
    ImGuiIO& io = ImGui::GetIO();
@@ -1919,23 +1967,30 @@ void EditorApp::renderEditorPanel()
        ImGui::IsKeyPressed(ImGuiKey_S)) {
       saveActiveDocument();
    }
-   // Each backend's renderEditorPanel() opens its own ImGui window
-   // with the title "Editor", so we don't call ImGui::Begin here.
-   // We just dispatch to whichever backend is active.
+
+   // The bar of open files, above whatever the file on screen is drawn by. It
+   // used to be drawn inside each backend instead, which meant the ST panel drew
+   // a second one: same set of files, two bars, and the one in the panel nobody
+   // was looking at. One panel, one bar, and the bar belongs to the panel.
+   renderFileTabs();
+
+   // Dispatch to whichever backend the file on screen needs. None of them opens a
+   // window: ImGuiManager::render() has already begun this one, and a Begin here
+   // would be a second window with the panel's name laid out inside it, which is
+   // how a file came to appear in a window of its own titled with its name.
    switch (m_currentFileType) {
-   case FileType::ST:
-      // The ST editor is not drawn here. STApp registers panels of its own, "ST
-      // Editor" among them, and ImGuiManager::render() calls every registered
-      // panel once per frame. Drawing it here as well meant the same panel ran
-      // twice in the same frame: the variables and body sections appeared a
-      // second time, squeezed into this window, and since both passes handed the
-      // same editors to TextEditor::Render, every key press was handled twice and
-      // each character came out doubled.
-      //
-      // The ST editor lives in its own panel; this one is for the backends that
-      // have no panel of their own.
-      ImGui::TextDisabled("The Structured Text editor is in the 'ST Editor' panel.");
+   case FileType::ST: {
+      auto& st = ST::STApp::getInstance();
+      // Three calls rather than one because they are three different windows'
+      // worth of work. The keyboard and the unsaved-changes prompt belong to the
+      // panel, so they happen before the document; the signature help and the
+      // completion lists are separate windows drawn after it so that the editor
+      // cannot clip them.
+      st.beginEditorFrame();
+      st.renderDocument();
+      st.endEditorFrame();
       break;
+   }
    case FileType::JSON:
       JSON::JSONApp::getInstance().renderJSONPanel();
       break;
@@ -1947,12 +2002,8 @@ void EditorApp::renderEditorPanel()
       break;
    case FileType::None:
    default:
-      // No file open - render a small placeholder
-      if (ImGui::Begin("Editor")) {
-         ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No file open");
-         ImGui::TextWrapped("Open a file from the Workspace panel or use the File menu.");
-         ImGui::End();
-      }
+      ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No file open");
+      ImGui::TextWrapped("Open a file from the Workspace panel or use the File menu.");
       break;
    }
 }

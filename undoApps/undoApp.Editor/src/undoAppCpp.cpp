@@ -1,7 +1,10 @@
 /**
  * @file undoAppCpp.cpp
  * @brief Implementation of the C/C++ editor backend
- * @ingroup undoapps
+ * @author Salvatore Bamundo
+ * @date July 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  *
  * The C/C++ backend used by undoApp.Editor for files with extensions:
  * .c, .cpp, .cc, .cxx (C++ source)
@@ -9,11 +12,6 @@
  *
  * Uses the built-in C++ language definition from ImGuiColorTextEdit
  * for syntax highlighting.
- *
- * @author Salvatore Bamundo
- * @date July 2026
- * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  */
 
 #include "undoAppCpp.hpp"
@@ -158,7 +156,6 @@ void CppApp::setDocument(const std::string& path, const std::string& text)
    if (m_editor) {
       m_editor->SetText(text);
    }
-   m_windowTitle = path.empty() ? "Editor" : fs::path(path).filename().string().c_str();
 }
 
 void CppApp::document(std::string& path, std::string& text) const
@@ -225,14 +222,8 @@ void CppApp::setupEditor()
 
 void CppApp::renderEditorPanel()
 {
-   if (!ImGui::Begin(m_windowTitle.c_str())) {
-      ImGui::End();
-      return;
-   }
-
    if (m_currentFilePath.empty()) {
       ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No file open");
-      ImGui::End();
       return;
    }
 
@@ -256,32 +247,10 @@ void CppApp::renderEditorPanel()
       m_editor->Render("##cppEditor");
       // Sampled after the render, because the editor raises its flag while it draws
       // and clears it at the start of the next one.
-      if (m_editor->IsTextChanged()) {
+if (m_editor->IsTextChanged()) {
          m_isDirty = true;
       }
    }
-
-   ImGui::End();
-}
-
-void CppApp::renderOutputPanel()
-{
-   if (!ImGui::Begin(m_windowTitle.c_str())) {
-      ImGui::End();
-      return;
-   }
-   ImGui::BeginChild("CppOutputLog", ImVec2(-1.0f, -1.0f), true);
-   for (const auto& line : m_outputLines) {
-      if (line.find("Error") != std::string::npos) {
-         ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", line.c_str());
-      } else if (line.find("Saved") != std::string::npos || line.find("Loaded") != std::string::npos) {
-         ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "%s", line.c_str());
-      } else {
-         ImGui::Text("%s", line.c_str());
-      }
-   }
-   ImGui::EndChild();
-   ImGui::End();
 }
 
 } // namespace undoApp

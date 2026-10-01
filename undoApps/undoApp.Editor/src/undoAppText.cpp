@@ -1,16 +1,15 @@
 /**
  * @file undoAppText.cpp
  * @brief Implementation of the plain-text editor undoApp
- * @ingroup undoapps
- *
- * The fallback backend used by undoApp.Editor when a file has an
- * extension that is neither `.st` nor `.json`. Provides a single
- * TextEditor with no syntax highlighting and a Save button.
- *
  * @author Salvatore Bamundo
  * @date July 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ *
+ * The fallback backend: a single TextEditor with no syntax highlighting, and the
+ * Save and Close buttons. Used for a file whose extension names none of the other
+ * backends, and for a JSON file this project owns, which has to be typed into and
+ * so cannot be the tree.
  */
 
 #include "undoAppText.hpp"
@@ -158,7 +157,6 @@ void TextApp::setDocument(const std::string& path, const std::string& text)
    if (m_editor) {
       m_editor->SetText(text);
    }
-   m_windowTitle = path.empty() ? "Editor" : fs::path(path).filename().string().c_str();
 }
 
 void TextApp::document(std::string& path, std::string& text) const
@@ -207,14 +205,8 @@ void TextApp::setupEditor()
 
 void TextApp::renderEditorPanel()
 {
-   if (!ImGui::Begin(m_windowTitle.c_str())) {
-      ImGui::End();
-      return;
-   }
-
    if (m_currentFilePath.empty()) {
       ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No file open");
-      ImGui::End();
       return;
    }
 
@@ -242,28 +234,6 @@ void TextApp::renderEditorPanel()
          m_isDirty = true;
       }
    }
-
-   ImGui::End();
-}
-
-void TextApp::renderOutputPanel()
-{
-   if (!ImGui::Begin(m_windowTitle.c_str())) {
-      ImGui::End();
-      return;
-   }
-   ImGui::BeginChild("TextOutputLog", ImVec2(-1.0f, -1.0f), true);
-   for (const auto& line : m_outputLines) {
-      if (line.find("Error") != std::string::npos) {
-         ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", line.c_str());
-      } else if (line.find("Saved") != std::string::npos || line.find("Loaded") != std::string::npos) {
-         ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "%s", line.c_str());
-      } else {
-         ImGui::Text("%s", line.c_str());
-      }
-   }
-   ImGui::EndChild();
-   ImGui::End();
 }
 
 } // namespace undoApp

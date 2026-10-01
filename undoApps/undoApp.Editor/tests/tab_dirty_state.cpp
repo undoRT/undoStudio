@@ -1,5 +1,12 @@
-// The unsaved mark on a tab, and what puts it there.
-//
+/**
+ * @file tab_dirty_state.cpp
+ * @brief The unsaved mark on a tab, and what puts it there
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // The mark used to be a lie in both directions at once, and neither half was visible
 // in the code that drew it: switching tabs went through stashActiveDocument(true),
 // which meant "this has unsaved changes", so every file that was ever looked at twice
@@ -71,7 +78,7 @@ static void scanForMark() {
    asteriskWasDrawn = false;
    for (int i = 0; i < ImGui::GetCurrentContext()->Windows.Size; ++i) {
       ImGuiWindow* w = ImGui::GetCurrentContext()->Windows[i];
-      // The child is registered as "ST Editor/##fileTabs_<hash>", so it is matched
+      // The child is registered as "Editor/##fileTabs_<hash>", so it is matched
       // by the id rather than by the whole name: the parent is in there too, and a
       // check that never looks at the right window is a check that cannot fail.
       if (std::string(w->Name).find("##fileTabs") == std::string::npos || w->DrawList == nullptr) {
@@ -101,7 +108,7 @@ static void scanForMark() {
 /// One frame with the bar drawn, which is also the frame that refreshes the marks.
 static void frameWithBar(EditorApp& app) {
    ImGui::NewFrame();
-   ImGui::Begin("ST Editor", nullptr, ImGuiWindowFlags_NoCollapse);
+   ImGui::Begin("Editor", nullptr, ImGuiWindowFlags_NoCollapse);
    app.renderFileTabs();
    ImGui::End();
    // The window outlives its Begin/End pair until the frame is over, which is what

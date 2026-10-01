@@ -1,3 +1,12 @@
+/**
+ * @file tab_switch.cpp
+ * @brief A tab selected behind ImGui's back stays selected
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <cstdio>
@@ -14,6 +23,7 @@
 #define private public
 #include <TextEditor.h>
 #include "undoAppST.hpp"
+#include "st_editor_frame.hpp"
 #include "workspace_fixture.hpp"
 #undef private
 
@@ -28,7 +38,7 @@ static void frame(STApp& app) {
   io().AddMousePosEvent(io().MousePos.x, io().MousePos.y);
   ImGui::NewFrame();
   ImGui::SetNextWindowSize(ImVec2(1200, 800));
-  app.renderEditorPanel();
+  stEditorFrame(app);
   ImGui::EndFrame();
 }
 

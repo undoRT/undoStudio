@@ -1,3 +1,12 @@
+/**
+ * @file reveal_selection.cpp
+ * @brief Revealing a declaration jumps to it and selects it, including across files
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 #include <imgui.h>
 #include <cstdio>
 #include <string>

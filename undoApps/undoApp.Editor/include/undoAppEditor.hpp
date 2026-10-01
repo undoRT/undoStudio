@@ -1,21 +1,23 @@
 /**
  * @file undoAppEditor.hpp
  * @brief Main header for the unified undoApp.Editor plugin
- * @ingroup undoapps
- *
- * This plugin is a single editor that auto-detects how to display a file
- * based on its extension:
- * - `.st` (case-insensitive)        -> Structured Text editor
- * - `.json`                         -> JSON viewer
- * - everything else (txt, md, ...)  -> plain-text editor (read / edit / save)
- *
- * The plugin owns three sub-apps internally (ST, JSON, Text) and dispatches
- * the single public openFile(path) call to the right one.
- *
  * @author Salvatore Bamundo
  * @date July 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ *
+ * One editor panel, and the four backends it dispatches to, chosen from the
+ * extension and from the file's role:
+ * - `.st`                                        -> Structured Text
+ * - `.json`                                      -> the JSON tree, or Text if it
+ *                                                 is a file this project owns
+ * - `.c` `.cpp` `.cc` `.cxx` `.h` `.hpp` ...     -> C++
+ * - anything else (txt, md, ...)                -> plain text
+ *
+ * openFile(path) is the one route in: the tab bar is what answers "what is open",
+ * so a backend that opened a file on its own would put a document on screen that
+ * the bar had no row for. openFileAsText and openFileAsTree are the two ways to
+ * be explicit about a `.json`, and both replace its row rather than adding one.
  */
 
 #pragma once
@@ -202,6 +204,15 @@ private:
    /// @brief Open a JSON file as plain text (bypass JSON viewer)
    void openFileAsText(const std::string& path);
 
+   /// @brief Open a JSON file in the tree viewer, whatever it opens as by default
+   ///
+   /// The other half of openFileAsText, and it exists for the same reason. A
+   /// project's own configuration opens as text because it is the file the user is
+   /// told to edit by hand, and a tree has nothing to type into; but exports.json
+   /// is nested and reads badly flat, and the tree is how you look at it.
+   /// One file, one tab, whichever of the two the file was opened with.
+   void openFileAsTree(const std::string& path);
+
    // ============================================================================
    // Helper functions
    // ============================================================================
@@ -355,7 +366,7 @@ private:
    bool m_showNewProjectPopup = false;
    char m_newProjectParent[1024] = {};
    char m_newProjectName[256] = {};
-   // Fields for project.toml
+   // Fields for project.json
    char m_newProjectAuthor[256] = {};
    char m_newProjectArch[64] = {"x86_64"};
 
@@ -385,16 +396,6 @@ private:
    bool m_showEditTaskPopup = false;
    std::string m_editTaskOriginalName;
 };
-
-/**
- * @brief Draw the bar of open files, from wherever a file is being shown
- *
- * A free function because two panels show files and only one of them is the
- * Editor's: a .st opens in the ST panel, which belongs to another class in the
- * same plugin. Calling a singleton through a forward declaration does not link,
- * so the call is routed through here instead of the class.
- */
-void renderOpenFileTabs();
 
 } // namespace Editor
 } // namespace undoApp

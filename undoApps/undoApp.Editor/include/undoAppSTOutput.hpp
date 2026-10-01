@@ -1,11 +1,10 @@
 /**
  * @file undoAppSTOutput.hpp
  * @brief Deciding which lines of the ST Output panel are shown.
- * @ingroup undoAppEditor
- *
- * @author undoStudio
+ * @author Salvatore Bamundo
  * @date 2026
- * @copyright SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  *
  * The Output panel holds three kinds of thing in one list: diagnostics, the
  * confirmations that a step ran, and the generated ST dumped in full for

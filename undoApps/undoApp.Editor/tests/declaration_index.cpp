@@ -1,3 +1,12 @@
+/**
+ * @file declaration_index.cpp
+ * @brief The declaration index built from an ST file: what it holds and what it points at
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 #include "undoAppSTSemantic.hpp"
 #include "lexer/Lexer.h"
 #include "parser/Parser.h"

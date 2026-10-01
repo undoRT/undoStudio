@@ -1,5 +1,12 @@
-// What a call to a function block instance offers as its parameters.
-//
+/**
+ * @file fb_call_params.cpp
+ * @brief What a call to a function block instance offers as its parameters
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // Calling an instance, `mot(a)`, binds positional arguments against the
 // block's interface: VAR_INPUT, VAR_OUTPUT and VAR_IN_OUT. Plain VAR,
 // VAR_TEMP and VAR CONSTANT are the block's own state and are not

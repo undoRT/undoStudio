@@ -1,7 +1,10 @@
 /**
  * @file undoAppCpp.hpp
  * @brief Header of the C/C++ editor backend
- * @ingroup undoapps
+ * @author Salvatore Bamundo
+ * @date July 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  *
  * The C/C++ backend used by undoApp.Editor for files with extensions:
  * .c, .cpp, .cc, .cxx (C++ source)
@@ -9,11 +12,6 @@
  *
  * Uses the built-in C++ language definition from ImGuiColorTextEdit
  * for syntax highlighting.
- *
- * @author Salvatore Bamundo
- * @date July 2026
- * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  */
 
 #pragma once
@@ -66,9 +64,6 @@ public:
    /// @brief Render the editor inside the unified "Editor" ImGui window
    void renderEditorPanel();
 
-   /// @brief Render the output panel
-   void renderOutputPanel();
-
    /**
     * @brief Put what is on screen back into an editor, under a new file name
     *
@@ -103,7 +98,6 @@ private:
    std::string getLanguageLabel(const std::string& path) const;
 
    bool m_initialized = false;
-   std::string m_windowTitle = "Editor";
    std::string m_currentFilePath;
    std::unique_ptr<TextEditor> m_editor;
    std::vector<std::string> m_outputLines;

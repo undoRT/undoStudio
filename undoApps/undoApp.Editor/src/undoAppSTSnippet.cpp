@@ -1,7 +1,6 @@
 /**
  * @file undoAppSTSnippet.cpp
  * @brief Statement skeletons offered by the editor's suggestion list
- * @ingroup undoapps
  * @author Salvatore Bamundo
  * @date July 2026
  * SPDX-License-Identifier: GPL-3.0-or-later

@@ -1,8 +1,6 @@
 /**
  * @file undoAppSTSemantic.cpp
  * @brief Resolved-symbol extraction for ST syntax highlighting
- * @ingroup undoapps
- *
  * @author Salvatore Bamundo
  * @date July 2026
  * SPDX-License-Identifier: GPL-3.0-or-later

@@ -1,7 +1,12 @@
-// Completion for a half-typed plain name, the way an editor is expected to
-// behave: type the first few letters of a variable, a method, a parameter or a
-// type and the list narrows to it, and Tab puts the rest of the name in.
-//
+/**
+ * @file identifier_completion.cpp
+ * @brief Completion for a half-typed plain name: the list narrows to it, and Tab finishes it
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // Everything here drives whole frames rather than calling the update functions,
 // because what is being tested is a decision taken during a frame: which
 // suggestions exist for the word ending at the caret, and what happens to the
@@ -25,6 +30,7 @@
 #define private public
 #include <TextEditor.h>
 #include "undoAppST.hpp"
+#include "st_editor_frame.hpp"
 #undef private
 
 using namespace undoApp::ST;
@@ -74,7 +80,7 @@ static void runFrame(STApp& app) {
   ImGui::NewFrame();
   io.WantTextInput = true;
   ImGui::SetNextWindowSize(ImVec2(1200, 800));
-  app.renderEditorPanel();
+  stEditorFrame(app);
   ImGui::EndFrame();
 }
 
@@ -164,7 +170,7 @@ int main() {
     io.AddMousePosEvent(600.0f, 700.0f);
     ImGui::NewFrame();
     ImGui::SetNextWindowSize(ImVec2(1200, 800));
-    app.renderEditorPanel();
+    stEditorFrame(app);
     ImGui::EndFrame();
   }
   frameFocused(app);
@@ -266,7 +272,7 @@ int main() {
     io.AddMousePosEvent(600.0f, 700.0f);
     ImGui::NewFrame();
     ImGui::SetNextWindowSize(ImVec2(1200, 800));
-    fbApp.renderEditorPanel();
+    stEditorFrame(fbApp);
     ImGui::EndFrame();
   }
   frameFocused(fbApp);

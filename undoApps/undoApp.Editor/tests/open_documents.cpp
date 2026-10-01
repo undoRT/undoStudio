@@ -1,5 +1,12 @@
-// Which file lands in which tab, and what happens to the one that was there.
-//
+/**
+ * @file open_documents.cpp
+ * @brief Which file lands in which tab, and what happens to the one that was there
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // Opening a file used to close the previous one, so a single click in the tree
 // threw away whatever you had been reading. The fix is the preview tab: a file
 // opened by browsing takes a slot that the next one replaces, and a tab becomes

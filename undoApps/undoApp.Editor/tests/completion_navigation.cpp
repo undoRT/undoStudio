@@ -1,5 +1,12 @@
-// Keyboard handling and signature help for the ST editor's member completion.
-//
+/**
+ * @file completion_navigation.cpp
+ * @brief Keyboard handling and signature help for the ST editor's member completion
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // The arrow keys are the regression that made this file necessary. The list is
 // an overlay window, and the editor that owns it is muted for the frame in which
 // a navigation key is handled. TextEditor only raises io.WantTextInput from
@@ -34,6 +41,7 @@
 #define private public
 #include <TextEditor.h>
 #include "undoAppST.hpp"
+#include "st_editor_frame.hpp"
 #undef private
 
 using namespace undoApp::ST;
@@ -57,7 +65,7 @@ static void runFrame(STApp& app) {
   ImGui::NewFrame();
   io.WantTextInput = true;
   ImGui::SetNextWindowSize(ImVec2(1200, 800));
-  app.renderEditorPanel();
+  stEditorFrame(app);
   ImGui::EndFrame();
 }
 
@@ -256,7 +264,7 @@ int main() {
     io.AddMousePosEvent(600.0f, 700.0f);
     ImGui::NewFrame();
     ImGui::SetNextWindowSize(ImVec2(1200, 800));
-    app.renderEditorPanel();
+    stEditorFrame(app);
     ImGui::EndFrame();
   }
   frameFocused(app);

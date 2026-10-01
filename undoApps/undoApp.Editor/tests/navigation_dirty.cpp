@@ -1,4 +1,12 @@
-// End-to-end check of go-to-declaration: index, resolution, tab switch, dirty.
+/**
+ * @file navigation_dirty.cpp
+ * @brief End-to-end check of go-to-declaration: index, resolution, tab switch, dirty
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 #include <imgui.h>
 #include <cstdio>
 #include <fstream>

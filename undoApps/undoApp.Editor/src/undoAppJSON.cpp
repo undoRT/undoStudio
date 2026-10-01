@@ -1,21 +1,19 @@
 /**
  * @file undoAppJSON.cpp
  * @brief Implementation of the JSON Viewer undoApp
- * @ingroup undoapps
- *
- * This file implements a JSON file viewer plugin for undoStudio.
- * It provides:
- * - Tree-based visualization of JSON data
- * - Expand/collapse all nodes
- * - Search/filter functionality
- * - Color-coded values (strings, numbers, booleans, null)
- * - Pretty print and raw view toggle
- * - Native file browser integration
- *
  * @author Salvatore Bamundo
  * @date July 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ *
+ * The JSON tree: a read-only view of a .json file, with expand and collapse, a
+ * search that keeps only the matching nodes, colour-coded values, and a pretty
+ * printed form of the file. A cell with no text in it still has colours.
+ *
+ * It opens no files. The button it used to have loaded straight into the viewer,
+ * so the tab bar answered "nothing is open" for a document that was on screen;
+ * files are opened from the Workspace tree and openFileAsTree is what puts one
+ * here.
  */
 
 #include "undoAppJSON.hpp"
@@ -371,134 +369,81 @@ void JSONApp::renderJSONTree(JSONNode* node, const std::string& filter, int dept
 
 void JSONApp::renderJSONPanel()
 {
-   if (ImGui::Begin("Editor")) {
-      // Toolbar
-      if (ImGui::Button("Open File")) {
-#ifdef USE_TINYFILEDIALOGS
-         const char* selected = tinyfd_openFileDialog("Open JSON File", "", 0, NULL, NULL, 0);
-         if (selected) {
-            loadJSONFile(selected);
-         }
-#else
-         m_showOpenFilePopup = true;
-#endif
-      }
+   // The panel is reached by opening a file, so "no file loaded" is a placeholder
+   // rather than a state to offer a way out of. There was an Open File button here,
+   // and it loaded straight into the viewer without going through the tab bar: the
+   // bar then answered "nothing is open" for a document that was on screen and
+   // could not be reached again. The tree is where files are opened from, and
+   // EditorApp::openFile is what puts one there.
+   if (!m_jsonRoot) {
+      ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No JSON file open");
+      ImGui::Text("Open a .json file from the Workspace panel, or with 'Open as Tree'");
+      return;
+   }
 
-      if (!m_jsonRoot) {
-         ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No JSON loaded");
-         ImGui::Text("Open a .json file using the 'Open File' button");
-         ImGui::End();
-         return;
-      }
-
-      ImGui::SameLine();
-
-      if (ImGui::Button("Expand All")) {
-         if (m_jsonRoot) {
-            std::function<void(JSONNode*)> expand = [&](JSONNode* n) {
-               n->expanded = true;
-               for (auto& child : n->children) {
-                  expand(child.get());
-               }
-            };
-            expand(m_jsonRoot.get());
-         }
-      }
-      ImGui::SameLine();
-
-      if (ImGui::Button("Collapse All")) {
-         if (m_jsonRoot) {
-            std::function<void(JSONNode*)> collapse = [&](JSONNode* n) {
-               n->expanded = false;
-               for (auto& child : n->children) {
-                  collapse(child.get());
-               }
-            };
-            collapse(m_jsonRoot.get());
-         }
-      }
-      ImGui::SameLine();
-
-      ImGui::Text("Search:");
-      ImGui::SameLine();
-      char searchBuf[256] = "";
-      strncpy(searchBuf, m_jsonSearchFilter.c_str(), sizeof(searchBuf) - 1);
-      if (ImGui::InputText("##jsonSearch", searchBuf, sizeof(searchBuf))) {
-         m_jsonSearchFilter = searchBuf;
-         m_jsonSearchActive = !m_jsonSearchFilter.empty();
-      }
-
-      ImGui::SameLine();
-      ImGui::Checkbox("Pretty Print", &m_showPrettyPrint);
-
-      ImGui::Separator();
-
-      if (!m_jsonRoot) {
-         ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No JSON loaded");
-         ImGui::Text("Open a .json file using the 'Open File' button");
-         ImGui::End();
-         return;
-      }
-
-      // Show file info
-      ImGui::Text("File: %s", fs::path(m_currentFilePath).filename().string().c_str());
-      ImGui::Text("Nodes: %d", countNodes(m_jsonRoot.get()));
-      ImGui::Separator();
-
-      // Render the tree in a child window for scrolling
-      ImGui::BeginChild("JSONTree", ImVec2(0, 0), true);
-
-      if (m_showPrettyPrint && !m_rawJSONString.empty()) {
-         try {
-            json j = json::parse(m_rawJSONString);
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 0.8f, 1.0f));
-            ImGui::TextUnformatted(j.dump(2).c_str());
-            ImGui::PopStyleColor();
-         } catch (...) {
-            ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "Error formatting JSON");
-         }
-      } else {
-         // Show tree view
-         renderJSONTree(m_jsonRoot.get(), m_jsonSearchFilter);
-      }
-
-      ImGui::EndChild();
-
-      // Open file popup (fallback when tinyfiledialogs is not available)
-      if (m_showOpenFilePopup) {
-         ImGui::OpenPopup("Open JSON File");
-      }
-      if (ImGui::BeginPopupModal("Open JSON File", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-         ImGui::Text("Enter path to JSON file:");
-
-         // Browse button
-         if (ImGui::Button("Browse...")) {
-#ifdef USE_TINYFILEDIALOGS
-            const char* selected = tinyfd_openFileDialog("Select JSON File", "", 0, NULL, NULL, 0);
-            if (selected) {
-               strncpy(m_filePathBuffer, selected, sizeof(m_filePathBuffer) - 1);
+   if (ImGui::Button("Expand All")) {
+      if (m_jsonRoot) {
+         std::function<void(JSONNode*)> expand = [&](JSONNode* n) {
+            n->expanded = true;
+            for (auto& child : n->children) {
+               expand(child.get());
             }
-#endif
-         }
-         ImGui::SameLine();
-         ImGui::InputText("##jsonPath", m_filePathBuffer, sizeof(m_filePathBuffer));
-
-         if (ImGui::Button("Load")) {
-            if (strlen(m_filePathBuffer) > 0) {
-               loadJSONFile(m_filePathBuffer);
-               m_showOpenFilePopup = false;
-               ImGui::CloseCurrentPopup();
-            }
-         }
-         ImGui::SameLine();
-         if (ImGui::Button("Cancel")) {
-            m_showOpenFilePopup = false;
-            ImGui::CloseCurrentPopup();
-         }
-         ImGui::EndPopup();
+         };
+         expand(m_jsonRoot.get());
       }
    }
-   ImGui::End();
+   ImGui::SameLine();
+
+   if (ImGui::Button("Collapse All")) {
+      if (m_jsonRoot) {
+         std::function<void(JSONNode*)> collapse = [&](JSONNode* n) {
+            n->expanded = false;
+            for (auto& child : n->children) {
+               collapse(child.get());
+            }
+         };
+         collapse(m_jsonRoot.get());
+      }
+   }
+   ImGui::SameLine();
+
+   ImGui::Text("Search:");
+   ImGui::SameLine();
+   char searchBuf[256] = "";
+   strncpy(searchBuf, m_jsonSearchFilter.c_str(), sizeof(searchBuf) - 1);
+   if (ImGui::InputText("##jsonSearch", searchBuf, sizeof(searchBuf))) {
+      m_jsonSearchFilter = searchBuf;
+      m_jsonSearchActive = !m_jsonSearchFilter.empty();
+   }
+
+   ImGui::SameLine();
+   ImGui::Checkbox("Pretty Print", &m_showPrettyPrint);
+
+   ImGui::Separator();
+
+   // Show file info
+   ImGui::Text("File: %s", fs::path(m_currentFilePath).filename().string().c_str());
+   ImGui::Text("Nodes: %d", countNodes(m_jsonRoot.get()));
+   ImGui::Separator();
+
+   // Render the tree in a child window for scrolling
+   ImGui::BeginChild("JSONTree", ImVec2(0, 0), true);
+
+   if (m_showPrettyPrint && !m_rawJSONString.empty()) {
+      try {
+         json j = json::parse(m_rawJSONString);
+         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 0.8f, 1.0f));
+         ImGui::TextUnformatted(j.dump(2).c_str());
+         ImGui::PopStyleColor();
+      } catch (...) {
+         ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "Error formatting JSON");
+      }
+   } else {
+      // Show tree view
+      renderJSONTree(m_jsonRoot.get(), m_jsonSearchFilter);
+   }
+
+   ImGui::EndChild();
 }
 
 // ============================================================================

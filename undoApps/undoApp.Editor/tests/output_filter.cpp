@@ -1,6 +1,12 @@
-// Which lines of the ST Output panel are shown, and what the counts beside the
-// switches say.
-//
+/**
+ * @file output_filter.cpp
+ * @brief Which lines of the ST Output panel are shown, and what the counts beside the switches say
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // The panel holds three kinds of line in one list, and the generated ST dumped in
 // full for debugging is hundreds of lines for a file of any size. Hiding it is
 // the whole point of the filter, so what is checked here is that hiding it leaves

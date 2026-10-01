@@ -1,4 +1,12 @@
-// A self-contained workspace for the tests that need one.
+/**
+ * @file workspace_fixture.hpp
+ * @brief A self-contained workspace for the tests that need one
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 //
 // The navigation and reveal tests used to point at directories that only existed
 // on the machine that wrote them (/tmp/opencode/ws2 and an absolute path under

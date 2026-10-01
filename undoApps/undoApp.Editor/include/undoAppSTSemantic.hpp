@@ -1,7 +1,10 @@
 /**
  * @file undoAppSTSemantic.hpp
  * @brief Resolved-symbol extraction for ST syntax highlighting
- * @ingroup undoapps
+ * @author Salvatore Bamundo
+ * @date July 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  *
  * Turns a parsed TranslationUnit plus the st2cpp symbol table into a flat list
  * of classified identifier tokens. Deliberately free of any UI dependency so
@@ -10,11 +13,6 @@
  *
  * Coordinates are 1-based lines (as st2cpp reports them) and 0-based columns
  * into the line, matching the editor's glyph indices.
- *
- * @author Salvatore Bamundo
- * @date July 2026
- * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
  */
 
 #pragma once

@@ -1,23 +1,21 @@
 /**
  * @file undoAppST.cpp
  * @brief Implementation of the Structured Text editor undoApp
- * @ingroup undoapps
- *
- * This file implements the ST (Structured Text) development environment
- * as a plugin for undoStudio. It provides:
- * - Workspace explorer with file tree
- * - Two-pane editor (Variables + Body) like TwinCAT/CODESYS
- * - POU creation (Program, Function Block, Function)
- * - Syntax highlighting using custom ST LanguageDefinition
- * - Semantic validation using the st2cpp parser and AST
- * - AST outline panel
- * - Drag and drop file management
- * - Native file browser integration
- *
  * @author Salvatore Bamundo
  * @date June 2026
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ *
+ * The Structured Text document: two panes (Variables and Body) with a splitter,
+ * one tab per method of a FUNCTION_BLOCK, syntax colouring by what a name resolves
+ * to rather than by a keyword list, the outline panel, the completion lists, the
+ * output panel, and the compile that hands the project to st2cpp.
+ *
+ * It draws no window of its own. The Editor panel owns the window and calls
+ * beginEditorFrame, renderDocument and endEditorFrame, because the keyboard and
+ * the unsaved prompt belong to the panel while the signature help and the
+ * completion lists are windows of their own, drawn after the document so the
+ * editor cannot clip them.
  */
 
 #include "undoAppST.hpp"
@@ -62,12 +60,6 @@ namespace fs = std::filesystem;
 
 namespace undoApp {
 
-// The bar of open files belongs to the Editor app. Declared rather than
-// included, because undoAppEditor.hpp includes this file's own header: including
-// it back would be a cycle.
-namespace Editor {
-void renderOpenFileTabs();
-} // namespace Editor
 namespace ST {
 
 namespace {
@@ -115,8 +107,8 @@ void saveSplitterPos(float pos)
 // ============================================================================
 // Project strictness -> st2cpp analyzer strictness
 //
-// project.toml declares it as [semantics] strictness = "on" | "off"; a new
-// project is created with "on". "on" makes the analyzer enforce the IEC
+// project.json declares it as "semantics": { "strictness": true }; a new
+// project is created with it true. Strict makes the analyzer enforce the IEC
 // 61131-3 implicit-conversion rules, so a lossy or cross-family implicit
 // assignment (INT := REAL) is reported instead of being silently
 // static_cast-ed away by the generated C++.
@@ -597,7 +589,6 @@ void STApp::shutdown()
 
    auto& mgr = undoStudio::ui::ImGuiManager::getInstance();
    mgr.removePanel("Workspace");
-   mgr.removePanel("ST Editor");
    mgr.removePanel("ST Output");
    mgr.removePanel("ST Outline");
 
@@ -608,15 +599,16 @@ void STApp::shutdown()
 /**
  * @brief Register UI panels with ImGuiManager
  *
- * Uses std::bind to pass non-static member functions as callbacks.
- * Registers four panels: Workspace, ST Editor, ST Output, and ST Outline.
+ * Uses std::bind to pass non-static member functions as callbacks. There is no
+ * panel of the editor's own: a .st opens in the Editor panel like a .json and a
+ * .cpp do, beside the same bar of open files, so this registers only the three
+ * panels that are about Structured Text rather than about one document.
  */
 void STApp::registerPanels()
 {
    auto& mgr = undoStudio::ui::ImGuiManager::getInstance();
 
    mgr.addPanel("Workspace", std::bind(&STApp::renderWorkspacePanel, this));
-   mgr.addPanel("ST Editor", std::bind(&STApp::renderEditorPanel, this));
    mgr.addPanel("ST Output", std::bind(&STApp::renderOutputPanel, this));
    mgr.addPanel("ST Outline", std::bind(&STApp::renderOutlinePanel, this));
 
@@ -3626,9 +3618,15 @@ void STApp::setErrorMarkers()
    for (const auto& err : m_errors) {
       const SourceSegment* seg = segmentForLine(err.line);
       if (!seg) {
-         // Header or footer: no editor owns it, so surface a hint instead.
+         // Generated structure rather than editor content: the POU declaration,
+         // a METHOD header or END_METHOD, the POU footer. None of it is
+         // editable text, so there is nowhere to put a marker but here - and the
+         // text has to name the line, because "header or footer" covers three
+         // different regions and the reader cannot tell which one failed.
+         const std::string where =
+            "Error on line " + std::to_string(err.line) + " of the generated file, outside any editor (see Output panel)";
          if (markers[m_variablesEditor.get()].find(1) == markers[m_variablesEditor.get()].end()) {
-            markers[m_variablesEditor.get()][1] = "Error in file header or footer (see Output panel)";
+            markers[m_variablesEditor.get()][1] = where;
          }
          continue;
       }
@@ -4739,7 +4737,12 @@ std::string STApp::generateSTFileWithMap(std::vector<SourceSegment>& outSegments
       emit("FUNCTION_BLOCK " + m_pouName + "\n");
       break;
    case POUType::Function:
-      emit("FUNCTION " + m_pouName + " : \n");
+      // The return type is not optional in the grammar: the parser reads a
+      // type after the colon and reports "Expected type name" without one.
+      // Emitting the colon and nothing after it made every FUNCTION fail to
+      // parse, and the diagnostic landed on the line after the header, which no
+      // editor owns - so it surfaced as "Error in file header or footer".
+      emit("FUNCTION " + m_pouName + " : " + m_functionReturnType + "\n");
       break;
    }
    emit("\n");
@@ -4954,6 +4957,30 @@ void STApp::openFile(const std::string& path)
          m_pouName = content.substr(nameStart, nameEnd - nameStart);
       }
       headerLineEnd = content.find('\n', nameStart);
+
+      // A FUNCTION's return type is part of the header line, and the generator
+      // writes this field back out, so it has to be read in as well. Clearing it
+      // here instead meant a FUNCTION opened from disk lost its return type and
+      // the next parse failed on the header it had just been given.
+      m_functionReturnType.clear();
+      if (m_pouType == POUType::Function) {
+         size_t afterName = nameEnd;
+         while (afterName < content.size() && (content[afterName] == ' ' || content[afterName] == '\t')) {
+            ++afterName;
+         }
+         if (afterName < content.size() && content[afterName] == ':') {
+            ++afterName;
+            while (afterName < content.size() && (content[afterName] == ' ' || content[afterName] == '\t')) {
+               ++afterName;
+            }
+            size_t typeStart = afterName;
+            size_t typeEnd = content.find_first_of(" \t\n(", typeStart);
+            if (typeEnd == std::string::npos) {
+               typeEnd = content.size();
+            }
+            m_functionReturnType = content.substr(typeStart, typeEnd - typeStart);
+         }
+      }
    }
 
    // Find the matching END_xxx footer for this POU type, then split
@@ -5077,136 +5104,134 @@ void STApp::moveFile(const std::string& sourcePath, const std::string& destDir)
  */
 void STApp::renderWorkspacePanel()
 {
-   if (ImGui::Begin("Workspace", nullptr, ImGuiWindowFlags_NoCollapse)) {
-      // Workspace selection buttons
-      if (ImGui::Button("Select Workspace")) {
-         openWorkspaceDialog();
+   // Workspace selection buttons
+   if (ImGui::Button("Select Workspace")) {
+      openWorkspaceDialog();
+   }
+   ImGui::SameLine();
+   if (ImGui::Button("Refresh")) {
+      if (!m_workspacePath.empty()) {
+         buildFileTree(m_rootNode, m_workspacePath);
+      }
+   }
+
+   ImGui::Separator();
+
+   if (!m_workspacePath.empty()) {
+      ImGui::Text("Workspace: %s", m_workspacePath.c_str());
+      ImGui::Separator();
+
+      // New POU and New Folder buttons
+      if (ImGui::Button("+ POU")) {
+         m_showNewPOUPopup = true;
+         m_newItemParent = m_workspacePath;
+         m_newPOUName.clear();
+         m_newPOUType = POUType::Program;
       }
       ImGui::SameLine();
-      if (ImGui::Button("Refresh")) {
-         if (!m_workspacePath.empty()) {
-            buildFileTree(m_rootNode, m_workspacePath);
+      if (ImGui::Button("+ Folder")) {
+         m_showNewFolderPopup = true;
+         m_newItemParent = m_workspacePath;
+         m_newItemName.clear();
+      }
+
+      // New POU popup
+      if (m_showNewPOUPopup) {
+            ImGui::OpenPopup("New POU");
+      }
+      if (ImGui::BeginPopupModal("New POU", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+         ImGui::Text("Create new POU in: %s", m_newItemParent.c_str());
+
+         char nameBuf[256] = "";
+         strncpy(nameBuf, m_newPOUName.c_str(), sizeof(nameBuf) - 1);
+         if (ImGui::InputText("POU Name", nameBuf, sizeof(nameBuf))) {
+            m_newPOUName = nameBuf;
          }
+
+         const char* typeItems[] = {"Program", "Function Block", "Function"};
+         int currentType = static_cast<int>(m_newPOUType);
+         if (ImGui::Combo("Type", &currentType, typeItems, 3)) {
+            m_newPOUType = static_cast<POUType>(currentType);
+         }
+
+         ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), ".st extension will be added automatically");
+
+         if (ImGui::Button("Create")) {
+            if (!m_newPOUName.empty()) {
+               std::string fileName = m_newPOUName;
+               if (fileName.size() < 3 || fileName.substr(fileName.size() - 3) != ".st") {
+                  fileName += ".st";
+               }
+               createNewFile(m_newItemParent, fileName);
+            }
+            m_showNewPOUPopup = false;
+            ImGui::CloseCurrentPopup();
+         }
+         ImGui::SameLine();
+         if (ImGui::Button("Cancel")) {
+            m_showNewPOUPopup = false;
+            ImGui::CloseCurrentPopup();
+         }
+         ImGui::EndPopup();
+      }
+
+      // New Folder popup
+      if (m_showNewFolderPopup) {
+            ImGui::OpenPopup("New Folder");
+      }
+      if (ImGui::BeginPopupModal("New Folder", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+         ImGui::Text("Create new folder in: %s", m_newItemParent.c_str());
+         char nameBuf[256] = "";
+         strncpy(nameBuf, m_newItemName.c_str(), sizeof(nameBuf) - 1);
+         if (ImGui::InputText("Folder Name", nameBuf, sizeof(nameBuf))) {
+            m_newItemName = nameBuf;
+         }
+         if (ImGui::Button("Create")) {
+            if (!m_newItemName.empty()) {
+               createNewFolder(m_newItemParent, m_newItemName);
+            }
+            m_showNewFolderPopup = false;
+            ImGui::CloseCurrentPopup();
+         }
+         ImGui::SameLine();
+         if (ImGui::Button("Cancel")) {
+            m_showNewFolderPopup = false;
+            ImGui::CloseCurrentPopup();
+         }
+         ImGui::EndPopup();
+      }
+
+      // Rename popup
+      if (m_showRenamePopup) {
+            ImGui::OpenPopup("Rename");
+      }
+      if (ImGui::BeginPopupModal("Rename", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+         ImGui::Text("Rename: %s", fs::path(m_renamePath).filename().string().c_str());
+         char nameBuf[256] = "";
+         strncpy(nameBuf, m_newItemName.c_str(), sizeof(nameBuf) - 1);
+         if (ImGui::InputText("New Name", nameBuf, sizeof(nameBuf))) {
+            m_newItemName = nameBuf;
+         }
+         if (ImGui::Button("Rename")) {
+            if (!m_newItemName.empty()) {
+               renameFile(m_renamePath, m_newItemName);
+            }
+            m_showRenamePopup = false;
+            ImGui::CloseCurrentPopup();
+         }
+         ImGui::SameLine();
+         if (ImGui::Button("Cancel")) {
+            m_showRenamePopup = false;
+            ImGui::CloseCurrentPopup();
+         }
+         ImGui::EndPopup();
       }
 
       ImGui::Separator();
-
-      if (!m_workspacePath.empty()) {
-         ImGui::Text("Workspace: %s", m_workspacePath.c_str());
-         ImGui::Separator();
-
-         // New POU and New Folder buttons
-         if (ImGui::Button("+ POU")) {
-            m_showNewPOUPopup = true;
-            m_newItemParent = m_workspacePath;
-            m_newPOUName.clear();
-            m_newPOUType = POUType::Program;
-         }
-         ImGui::SameLine();
-         if (ImGui::Button("+ Folder")) {
-            m_showNewFolderPopup = true;
-            m_newItemParent = m_workspacePath;
-            m_newItemName.clear();
-         }
-
-         // New POU popup
-         if (m_showNewPOUPopup) {
-               ImGui::OpenPopup("New POU");
-         }
-         if (ImGui::BeginPopupModal("New POU", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Create new POU in: %s", m_newItemParent.c_str());
-
-            char nameBuf[256] = "";
-            strncpy(nameBuf, m_newPOUName.c_str(), sizeof(nameBuf) - 1);
-            if (ImGui::InputText("POU Name", nameBuf, sizeof(nameBuf))) {
-               m_newPOUName = nameBuf;
-            }
-
-            const char* typeItems[] = {"Program", "Function Block", "Function"};
-            int currentType = static_cast<int>(m_newPOUType);
-            if (ImGui::Combo("Type", &currentType, typeItems, 3)) {
-               m_newPOUType = static_cast<POUType>(currentType);
-            }
-
-            ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), ".st extension will be added automatically");
-
-            if (ImGui::Button("Create")) {
-               if (!m_newPOUName.empty()) {
-                  std::string fileName = m_newPOUName;
-                  if (fileName.size() < 3 || fileName.substr(fileName.size() - 3) != ".st") {
-                     fileName += ".st";
-                  }
-                  createNewFile(m_newItemParent, fileName);
-               }
-               m_showNewPOUPopup = false;
-               ImGui::CloseCurrentPopup();
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Cancel")) {
-               m_showNewPOUPopup = false;
-               ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndPopup();
-         }
-
-         // New Folder popup
-         if (m_showNewFolderPopup) {
-               ImGui::OpenPopup("New Folder");
-         }
-         if (ImGui::BeginPopupModal("New Folder", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Create new folder in: %s", m_newItemParent.c_str());
-            char nameBuf[256] = "";
-            strncpy(nameBuf, m_newItemName.c_str(), sizeof(nameBuf) - 1);
-            if (ImGui::InputText("Folder Name", nameBuf, sizeof(nameBuf))) {
-               m_newItemName = nameBuf;
-            }
-            if (ImGui::Button("Create")) {
-               if (!m_newItemName.empty()) {
-                  createNewFolder(m_newItemParent, m_newItemName);
-               }
-               m_showNewFolderPopup = false;
-               ImGui::CloseCurrentPopup();
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Cancel")) {
-               m_showNewFolderPopup = false;
-               ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndPopup();
-         }
-
-         // Rename popup
-         if (m_showRenamePopup) {
-               ImGui::OpenPopup("Rename");
-         }
-         if (ImGui::BeginPopupModal("Rename", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Rename: %s", fs::path(m_renamePath).filename().string().c_str());
-            char nameBuf[256] = "";
-            strncpy(nameBuf, m_newItemName.c_str(), sizeof(nameBuf) - 1);
-            if (ImGui::InputText("New Name", nameBuf, sizeof(nameBuf))) {
-               m_newItemName = nameBuf;
-            }
-            if (ImGui::Button("Rename")) {
-               if (!m_newItemName.empty()) {
-                  renameFile(m_renamePath, m_newItemName);
-               }
-               m_showRenamePopup = false;
-               ImGui::CloseCurrentPopup();
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Cancel")) {
-               m_showRenamePopup = false;
-               ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndPopup();
-         }
-
-         ImGui::Separator();
-         renderFileTree(m_rootNode);
-      } else {
-         ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No workspace selected");
-         ImGui::Text("Click 'Select Workspace' to choose a folder");
-      }
+      renderFileTree(m_rootNode);
+   } else {
+      ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No workspace selected");
+      ImGui::Text("Click 'Select Workspace' to choose a folder");
    }
 
    // ================================================================
@@ -5287,8 +5312,6 @@ void STApp::renderWorkspacePanel()
       }
       ImGui::EndPopup();
    }
-
-   ImGui::End();
 }
 
 // ============================================================================
@@ -5482,101 +5505,97 @@ void STApp::renderFileTree(FileNode& node)
  */
 void STApp::renderOutlinePanel()
 {
-   if (ImGui::Begin("ST Outline", nullptr, ImGuiWindowFlags_NoCollapse)) {
-      if (!m_ast) {
-         ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No AST available");
-         ImGui::Text("Open a valid .st file");
-         ImGui::End();
-         return;
-      }
+   if (!m_ast) {
+      ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No AST available");
+      ImGui::Text("Open a valid .st file");
+      return;
+   }
 
-      // Show POU list
-      for (const auto& pou : m_ast->pous) {
-         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.5f, 1.0f, 1.0f));
-         if (ImGui::TreeNodeEx(pou.name.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::PopStyleColor();
+   // Show POU list
+   for (const auto& pou : m_ast->pous) {
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.5f, 1.0f, 1.0f));
+      if (ImGui::TreeNodeEx(pou.name.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+         ImGui::PopStyleColor();
 
-            // Show variable sections
-            for (const auto& sec : pou.varSections) {
-               std::string label;
-               switch (sec.kind) {
-               case VarKind::VAR:
-                  label = "VAR";
-                  break;
-               case VarKind::INPUT:
-                  label = "VAR_INPUT";
-                  break;
-               case VarKind::OUTPUT:
-                  label = "VAR_OUTPUT";
-                  break;
-               case VarKind::IN_OUT:
-                  label = "VAR_IN_OUT";
-                  break;
-               case VarKind::EXTERNAL:
-                  label = "VAR_EXTERNAL";
-                  break;
-               case VarKind::GLOBAL:
-                  label = "VAR_GLOBAL";
-                  break;
-               case VarKind::TEMP:
-                  label = "VAR_TEMP";
-                  break;
-               }
-               ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 0.8f, 0.8f, 1.0f));
-               if (ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_Leaf)) {
-                  ImGui::PopStyleColor();
-                  for (const auto& decl : sec.decls) {
-                     ImGui::BulletText("%s", decl.name.c_str());
-                  }
-                  ImGui::TreePop();
-               } else {
-                  ImGui::PopStyleColor();
-               }
+         // Show variable sections
+         for (const auto& sec : pou.varSections) {
+            std::string label;
+            switch (sec.kind) {
+            case VarKind::VAR:
+               label = "VAR";
+               break;
+            case VarKind::INPUT:
+               label = "VAR_INPUT";
+               break;
+            case VarKind::OUTPUT:
+               label = "VAR_OUTPUT";
+               break;
+            case VarKind::IN_OUT:
+               label = "VAR_IN_OUT";
+               break;
+            case VarKind::EXTERNAL:
+               label = "VAR_EXTERNAL";
+               break;
+            case VarKind::GLOBAL:
+               label = "VAR_GLOBAL";
+               break;
+            case VarKind::TEMP:
+               label = "VAR_TEMP";
+               break;
             }
-
-            // Show methods for FUNCTION_BLOCK
-            if (!pou.methods.empty()) {
-               ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
-               for (const auto& meth : pou.methods) {
-                  ImGui::BulletText("METHOD %s", meth.name.c_str());
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 0.8f, 0.8f, 1.0f));
+            if (ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_Leaf)) {
+               ImGui::PopStyleColor();
+               for (const auto& decl : sec.decls) {
+                  ImGui::BulletText("%s", decl.name.c_str());
                }
+               ImGui::TreePop();
+            } else {
                ImGui::PopStyleColor();
             }
-            ImGui::TreePop();
-         } else {
-            ImGui::PopStyleColor();
          }
-      }
 
-      // Show structs
-      for (const auto& st : m_ast->structs) {
-         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 0.8f, 0.8f, 1.0f));
-         if (ImGui::TreeNodeEx(st.name.c_str(), ImGuiTreeNodeFlags_Leaf)) {
-            ImGui::PopStyleColor();
-            for (const auto& member : st.members) {
-               ImGui::BulletText("%s", member.name.c_str());
+         // Show methods for FUNCTION_BLOCK
+         if (!pou.methods.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+            for (const auto& meth : pou.methods) {
+               ImGui::BulletText("METHOD %s", meth.name.c_str());
             }
-            ImGui::TreePop();
-         } else {
             ImGui::PopStyleColor();
          }
-      }
-
-      // Show enums
-      for (const auto& en : m_ast->enums) {
-         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 0.8f, 0.8f, 1.0f));
-         if (ImGui::TreeNodeEx(en.name.c_str(), ImGuiTreeNodeFlags_Leaf)) {
-            ImGui::PopStyleColor();
-            for (const auto& enumerator : en.enumerators) {
-               ImGui::BulletText("%s", enumerator.name.c_str());
-            }
-            ImGui::TreePop();
-         } else {
-            ImGui::PopStyleColor();
-         }
+         ImGui::TreePop();
+      } else {
+         ImGui::PopStyleColor();
       }
    }
-   ImGui::End();
+
+   // Show structs
+   for (const auto& st : m_ast->structs) {
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 0.8f, 0.8f, 1.0f));
+      if (ImGui::TreeNodeEx(st.name.c_str(), ImGuiTreeNodeFlags_Leaf)) {
+         ImGui::PopStyleColor();
+         for (const auto& member : st.members) {
+            ImGui::BulletText("%s", member.name.c_str());
+         }
+         ImGui::TreePop();
+      } else {
+         ImGui::PopStyleColor();
+      }
+   }
+
+   // Show enums
+   for (const auto& en : m_ast->enums) {
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 0.8f, 0.8f, 1.0f));
+      if (ImGui::TreeNodeEx(en.name.c_str(), ImGuiTreeNodeFlags_Leaf)) {
+         ImGui::PopStyleColor();
+         for (const auto& enumerator : en.enumerators) {
+            ImGui::BulletText("%s", enumerator.name.c_str());
+         }
+         ImGui::TreePop();
+      } else {
+         ImGui::PopStyleColor();
+      }
+   }
 }
 
 // ============================================================================
@@ -5584,7 +5603,7 @@ void STApp::renderOutlinePanel()
 // ============================================================================
 
 /**
- * @brief Render the ST Editor panel
+ * @brief Draw the two panes of a Structured Text document
  *
  * Displays a two-pane editor with Variables and Body sections,
  * with a thin draggable splitter (like VS Code) to resize both sections.
@@ -5792,220 +5811,237 @@ void STApp::renderJumpPopup()
    }
 }
 
-void STApp::renderEditorPanel()
+void STApp::beginEditorFrame()
 {
    handleKeyboardShortcuts();
    updateDirtyState();
    renderDirtyPrompt();
    renderJumpPopup();
+}
 
-   if (ImGui::Begin("ST Editor", nullptr, ImGuiWindowFlags_NoCollapse)) {
-      // The bar of open files. It belongs to the Editor app rather than to this
-      // panel, because the set of open files is wider than the files this editor
-      // shows: a .st and a .cpp are open at once and only one of them is on screen.
-      // Drawn here as well as in the Editor panel because a .st opens in this
-      // panel, and a bar that appeared on the other side of the window would be
-      // showing what is open somewhere you cannot see it.
-      Editor::renderOpenFileTabs();
+void STApp::renderDocument()
+{
+   if (m_currentFilePath.empty()) {
+      ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No Structured Text file open");
+      ImGui::Text("Select a .st file from the Workspace panel");
+      return;
+   }
 
-      if (m_currentFilePath.empty()) {
-         ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No file open");
-         ImGui::Text("Select a .st file from the Workspace panel");
-         ImGui::End();
-         return;
-      }
+   // What kind of POU this file declares. It is the one piece of the row that used
+   // to sit here that nothing else says: the tab bar names the file, and the first
+   // method tab names the POU, but PROGRAM against FUNCTION_BLOCK against FUNCTION
+   // is only written down here, and it is what a FUNCTION's return type hangs off.
+   const char* typeStr = "";
+   switch (m_pouType) {
+   case POUType::Program:
+      typeStr = "PROGRAM";
+      break;
+   case POUType::FunctionBlock:
+      typeStr = "FUNCTION_BLOCK";
+      break;
+   case POUType::Function:
+      typeStr = "FUNCTION";
+      break;
+   }
+   ImGui::TextColored(ImVec4(0.0f, 0.7f, 1.0f, 1.0f), "%s: %s", typeStr, m_pouName.c_str());
 
-      // What kind of POU this file declares. It is the one piece of the row that used
-      // to sit here that nothing else says: the tab bar names the file, and the first
-      // method tab names the POU, but PROGRAM against FUNCTION_BLOCK against FUNCTION
-      // is only written down here, and it is what a FUNCTION's return type hangs off.
-      const char* typeStr = "";
-      switch (m_pouType) {
-      case POUType::Program:
-         typeStr = "PROGRAM";
-         break;
-      case POUType::FunctionBlock:
-         typeStr = "FUNCTION_BLOCK";
-         break;
-      case POUType::Function:
-         typeStr = "FUNCTION";
-         break;
-      }
-      ImGui::TextColored(ImVec4(0.0f, 0.7f, 1.0f, 1.0f), "%s: %s", typeStr, m_pouName.c_str());
-
-      // Toolbar with action buttons (always visible at the top, applies to
-      // the whole POU - saving/compiling serializes every method tab too)
-      ImGui::Separator();
-      if (ImGui::Button("Save")) {
-         saveCurrentFile();
-      }
+   // A FUNCTION's return type, editable here because for a file that already
+   // exists there was nowhere else to change it: the New POU dialog asks for one
+   // only on the way in, and a FUNCTION written without one is a parse error on
+   // every keystroke with no way out of it. The parser reads a type after the
+   // colon unconditionally, so an empty field here is the same broken file.
+   if (m_pouType == POUType::Function) {
+      char retBuf[64] = "";
+      strncpy(retBuf, m_functionReturnType.c_str(), sizeof(retBuf) - 1);
       ImGui::SameLine();
-      if (ImGui::Button("Compile")) {
-         compile();
+      ImGui::SetNextItemWidth(120.0f);
+      if (ImGui::InputText("##pouReturnType", retBuf, sizeof(retBuf))) {
+         if (std::string(retBuf) != m_functionReturnType) {
+            m_functionReturnType = retBuf;
+            m_isDirty = true;
+            validateAndParse();
+         }
       }
-      ImGui::SameLine();
-      if (ImGui::Button("Validate")) {
-         validateAndParse();
-      }
-      ImGui::SameLine();
-      if (ImGui::Button("Close")) {
-         m_currentFilePath.clear();
-         m_variablesEditor->SetText("");
-         m_bodyEditor->SetText("");
-         m_pouName.clear();
-         m_ast.reset();
-         m_errors.clear();
-         resetMethodState();
-      }
-
-      // The tooltip switch travels with the buttons, which is where a per-editor
-      // setting belongs. It used to sit on a row above them that also named the file
-      // and repeated whether it had unsaved changes, both of which the tab bar drawn a
-      // few lines higher already says. Still off by default, because they get in the
-      // way when reading code: this is the one place they can be asked for.
-      ImGui::SameLine();
-      ImGui::Checkbox("Tooltips", &m_showTooltips);
-
-      // Add Method popup (name + return type only, as requested)
-      //
-      // The request can come from this panel (the "+" tab) or from the tree's
-      // context menu. A request from the tree is honoured here rather than there
-      // on purpose: OpenPopup/BeginPopupModal are resolved per window, so opening
-      // the popup in the Workspace window and submitting it in the ST Editor one
-      // makes the popup silently never appear. The tree therefore only sets the
-      // pending flag, and this is the window that actually opens it.
-      if (consumeAddMethodDialogRequest()) {
-         ImGui::OpenPopup("Add Method");
-      }
-      if (m_showAddMethodPopup) {
-         ImGui::OpenPopup("Add Method");
-      }
-      if (ImGui::BeginPopupModal("Add Method", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-         char nameBuf[256] = "";
-         strncpy(nameBuf, m_newMethodName.c_str(), sizeof(nameBuf) - 1);
-         if (ImGui::InputText("Method Name", nameBuf, sizeof(nameBuf))) {
-            m_newMethodName = nameBuf;
-         }
-
-         char retBuf[64] = "";
-         strncpy(retBuf, m_newMethodReturnType.c_str(), sizeof(retBuf) - 1);
-         if (ImGui::InputText("Return Type", retBuf, sizeof(retBuf))) {
-            m_newMethodReturnType = retBuf;
-         }
-
-         bool nameTaken = !m_newMethodName.empty() && findMethodIndex(m_newMethodName) >= 0;
-         if (nameTaken) {
-            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "A method with this name already exists");
-         }
-
-         ImGui::BeginDisabled(m_newMethodName.empty() || nameTaken);
-         if (ImGui::Button("Create")) {
-            addMethod(m_newMethodName, m_newMethodReturnType);
-            m_newMethodName.clear();
-            m_newMethodReturnType.clear();
-            // The flag has to be cleared, not just the popup closed: while it is
-            // set, OpenPopup is called again on the next frame and the box comes
-            // straight back, so it could never be dismissed and, being a modal,
-            // it kept the whole application off the pointer.
-            m_showAddMethodPopup = false;
-            ImGui::CloseCurrentPopup();
-         }
-         ImGui::EndDisabled();
-         ImGui::SameLine();
-         if (ImGui::Button("Cancel")) {
-            m_newMethodName.clear();
-            m_newMethodReturnType.clear();
-            m_showAddMethodPopup = false;
-            ImGui::CloseCurrentPopup();
-         }
-         ImGui::EndPopup();
-      }
-
-      // Delete Method confirmation
-      if (m_showDeleteMethodConfirmation) {
-         ImGui::OpenPopup("Delete Method?");
-      }
-      if (ImGui::BeginPopupModal("Delete Method?", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-         ImGui::Text("Delete method '%s'? This cannot be undone.", m_methodToDelete.c_str());
-         if (ImGui::Button("Yes, Delete")) {
-            deleteMethod(m_methodToDelete);
-            m_methodToDelete.clear();
-            m_showDeleteMethodConfirmation = false;
-            ImGui::CloseCurrentPopup();
-         }
-         ImGui::SameLine();
-         if (ImGui::Button("Cancel")) {
-            m_methodToDelete.clear();
-            m_showDeleteMethodConfirmation = false;
-            ImGui::CloseCurrentPopup();
-         }
-         ImGui::EndPopup();
-      }
-
-      // Tab bar: POU tab first, then one tab per method, then a trailing
-      // "+" to add a new one (FUNCTION_BLOCK only - PROGRAM/FUNCTION have
-      // no methods in ST).
-      if (ImGui::BeginTabBar("##EditorTabs", ImGuiTabBarFlags_Reorderable)) {
-         // Selection is driven by ImGui, not by us: passing a bool* to
-         // BeginTabItem makes ImGui overwrite it from its own SelectedTabId on
-         // every frame, so a value we compute ourselves oscillates and the tabs
-         // stop responding to clicks. Programmatic switches therefore use
-         // ImGuiTabItemFlags_SetSelected, which is the supported trigger.
-         ImGuiTabItemFlags pouFlags = m_pendingSelectPOU ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
-         bool pouTabOpen = ImGui::BeginTabItem(m_pouName.empty() ? "POU" : m_pouName.c_str(), nullptr, pouFlags);
-         if (pouTabOpen) {
-            m_activeTab.clear();
-            renderSplitEditor(*m_variablesEditor, *m_bodyEditor, m_splitterPos,
-                               "Variables (VAR / VAR_INPUT / VAR_OUTPUT / VAR_GLOBAL ...)", "Body (Cyclic code)",
-                               "##variables_editor", "##body_editor");
-            ImGui::EndTabItem();
-         }
-
-         for (auto& method : m_methods) {
-            ImGui::PushID(method.name.c_str());
-            ImGuiTabItemFlags flags = (m_pendingTabSelection == method.name) ? ImGuiTabItemFlags_SetSelected
-                                                                              : ImGuiTabItemFlags_None;
-            bool tabOpen = ImGui::BeginTabItem(method.name.c_str(), nullptr, flags);
-
-            if (ImGui::BeginPopupContextItem("##method_ctx")) {
-               if (ImGui::MenuItem("Delete Method")) {
-                  m_methodToDelete = method.name;
-                  m_showDeleteMethodConfirmation = true;
-               }
-               ImGui::EndPopup();
-            }
-
-            if (tabOpen) {
-               m_activeTab = method.name;
-               MethodEditors& editors = getOrCreateMethodEditors(method);
-               std::string varLabel = "Variables (VAR_INPUT / VAR_OUTPUT / VAR_IN_OUT / VAR ...)";
-               std::string bodyLabel = "Body";
-               renderSplitEditor(*editors.variables, *editors.body, editors.splitterPos, varLabel.c_str(),
-                                  bodyLabel.c_str(), "##method_variables", "##method_body");
-               ImGui::EndTabItem();
-            }
-            ImGui::PopID();
-         }
-
-         if (m_pouType == POUType::FunctionBlock) {
-            if (ImGui::TabItemButton("+", ImGuiTabItemFlags_Trailing)) {
-               m_newMethodName.clear();
-               m_newMethodReturnType.clear();
-               m_showAddMethodPopup = true;
-            }
-         }
-
-         ImGui::EndTabBar();
-
-         // The request has now been handed to ImGui; do not force it again,
-         // otherwise the tab would be pinned and clicking would feel broken.
-         m_pendingTabSelection.clear();
-         m_pendingSelectPOU = false;
+      if (m_functionReturnType.empty()) {
+         ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f),
+                            "A FUNCTION needs a return type: the file does not parse without one");
       }
    }
-   ImGui::End();
 
-   // Drawn after the main window so neither is clipped by it, and the lists last
+   // Toolbar with action buttons (always visible at the top, applies to
+   // the whole POU - saving/compiling serializes every method tab too)
+   ImGui::Separator();
+   if (ImGui::Button("Save")) {
+      saveCurrentFile();
+   }
+   ImGui::SameLine();
+   if (ImGui::Button("Compile")) {
+      compile();
+   }
+   ImGui::SameLine();
+   if (ImGui::Button("Validate")) {
+      validateAndParse();
+   }
+   ImGui::SameLine();
+   if (ImGui::Button("Close")) {
+      m_currentFilePath.clear();
+      m_variablesEditor->SetText("");
+      m_bodyEditor->SetText("");
+      m_pouName.clear();
+      m_ast.reset();
+      m_errors.clear();
+      resetMethodState();
+   }
+
+   // The tooltip switch travels with the buttons, which is where a per-editor
+   // setting belongs. It used to sit on a row above them that also named the file
+   // and repeated whether it had unsaved changes, both of which the tab bar drawn a
+   // few lines higher already says. Still off by default, because they get in the
+   // way when reading code: this is the one place they can be asked for.
+   ImGui::SameLine();
+   ImGui::Checkbox("Tooltips", &m_showTooltips);
+
+   // Add Method popup (name + return type only, as requested)
+   //
+   // The request can come from this panel (the "+" tab) or from the tree's
+   // context menu. A request from the tree is honoured here rather than there
+   // on purpose: OpenPopup/BeginPopupModal are resolved per window, so opening
+   // the popup in the Workspace window and submitting it in the Editor one makes
+   // the popup silently never appear. The tree therefore only sets the pending
+   // flag, and this is the panel that actually opens it.
+   if (consumeAddMethodDialogRequest()) {
+      ImGui::OpenPopup("Add Method");
+   }
+   if (m_showAddMethodPopup) {
+      ImGui::OpenPopup("Add Method");
+   }
+   if (ImGui::BeginPopupModal("Add Method", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+      char nameBuf[256] = "";
+      strncpy(nameBuf, m_newMethodName.c_str(), sizeof(nameBuf) - 1);
+      if (ImGui::InputText("Method Name", nameBuf, sizeof(nameBuf))) {
+         m_newMethodName = nameBuf;
+      }
+
+      char retBuf[64] = "";
+      strncpy(retBuf, m_newMethodReturnType.c_str(), sizeof(retBuf) - 1);
+      if (ImGui::InputText("Return Type", retBuf, sizeof(retBuf))) {
+         m_newMethodReturnType = retBuf;
+      }
+
+      bool nameTaken = !m_newMethodName.empty() && findMethodIndex(m_newMethodName) >= 0;
+      if (nameTaken) {
+         ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "A method with this name already exists");
+      }
+
+      ImGui::BeginDisabled(m_newMethodName.empty() || nameTaken);
+      if (ImGui::Button("Create")) {
+         addMethod(m_newMethodName, m_newMethodReturnType);
+         m_newMethodName.clear();
+         m_newMethodReturnType.clear();
+         // The flag has to be cleared, not just the popup closed: while it is
+         // set, OpenPopup is called again on the next frame and the box comes
+         // straight back, so it could never be dismissed and, being a modal,
+         // it kept the whole application off the pointer.
+         m_showAddMethodPopup = false;
+         ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndDisabled();
+      ImGui::SameLine();
+      if (ImGui::Button("Cancel")) {
+         m_newMethodName.clear();
+         m_newMethodReturnType.clear();
+         m_showAddMethodPopup = false;
+         ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndPopup();
+   }
+
+   // Delete Method confirmation
+   if (m_showDeleteMethodConfirmation) {
+      ImGui::OpenPopup("Delete Method?");
+   }
+   if (ImGui::BeginPopupModal("Delete Method?", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+      ImGui::Text("Delete method '%s'? This cannot be undone.", m_methodToDelete.c_str());
+      if (ImGui::Button("Yes, Delete")) {
+         deleteMethod(m_methodToDelete);
+         m_methodToDelete.clear();
+         m_showDeleteMethodConfirmation = false;
+         ImGui::CloseCurrentPopup();
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Cancel")) {
+         m_methodToDelete.clear();
+         m_showDeleteMethodConfirmation = false;
+         ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndPopup();
+   }
+
+   // Tab bar: POU tab first, then one tab per method, then a trailing
+   // "+" to add a new one (FUNCTION_BLOCK only - PROGRAM/FUNCTION have
+   // no methods in ST).
+   if (ImGui::BeginTabBar("##EditorTabs", ImGuiTabBarFlags_Reorderable)) {
+      // Selection is driven by ImGui, not by us: passing a bool* to
+      // BeginTabItem makes ImGui overwrite it from its own SelectedTabId on
+      // every frame, so a value we compute ourselves oscillates and the tabs
+      // stop responding to clicks. Programmatic switches therefore use
+      // ImGuiTabItemFlags_SetSelected, which is the supported trigger.
+      ImGuiTabItemFlags pouFlags = m_pendingSelectPOU ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+      bool pouTabOpen = ImGui::BeginTabItem(m_pouName.empty() ? "POU" : m_pouName.c_str(), nullptr, pouFlags);
+      if (pouTabOpen) {
+         m_activeTab.clear();
+         renderSplitEditor(*m_variablesEditor, *m_bodyEditor, m_splitterPos,
+                            "Variables (VAR / VAR_INPUT / VAR_OUTPUT / VAR_GLOBAL ...)", "Body (Cyclic code)",
+                            "##variables_editor", "##body_editor");
+         ImGui::EndTabItem();
+      }
+
+      for (auto& method : m_methods) {
+         ImGui::PushID(method.name.c_str());
+         ImGuiTabItemFlags flags = (m_pendingTabSelection == method.name) ? ImGuiTabItemFlags_SetSelected
+                                                                           : ImGuiTabItemFlags_None;
+         bool tabOpen = ImGui::BeginTabItem(method.name.c_str(), nullptr, flags);
+
+         if (ImGui::BeginPopupContextItem("##method_ctx")) {
+            if (ImGui::MenuItem("Delete Method")) {
+               m_methodToDelete = method.name;
+               m_showDeleteMethodConfirmation = true;
+            }
+            ImGui::EndPopup();
+         }
+
+         if (tabOpen) {
+            m_activeTab = method.name;
+            MethodEditors& editors = getOrCreateMethodEditors(method);
+            std::string varLabel = "Variables (VAR_INPUT / VAR_OUTPUT / VAR_IN_OUT / VAR ...)";
+            std::string bodyLabel = "Body";
+            renderSplitEditor(*editors.variables, *editors.body, editors.splitterPos, varLabel.c_str(),
+                               bodyLabel.c_str(), "##method_variables", "##method_body");
+            ImGui::EndTabItem();
+         }
+         ImGui::PopID();
+      }
+
+      if (m_pouType == POUType::FunctionBlock) {
+         if (ImGui::TabItemButton("+", ImGuiTabItemFlags_Trailing)) {
+            m_newMethodName.clear();
+            m_newMethodReturnType.clear();
+            m_showAddMethodPopup = true;
+         }
+      }
+
+      ImGui::EndTabBar();
+
+      // The request has now been handed to ImGui; do not force it again,
+      // otherwise the tab would be pinned and clicking would feel broken.
+      m_pendingTabSelection.clear();
+      m_pendingSelectPOU = false;
+   }
+}
+
+void STApp::endEditorFrame()
+{
+   // Drawn after the document so the editor cannot clip them, and the lists last
    // so they win where the two would overlap: the signature belongs to the call
    // the list is completing, so the list is the one closer to the cursor. The
    // statement list follows for the same reason, and is the last word because it
@@ -6039,10 +6075,6 @@ void STApp::renderEditorPanel()
  */
 void STApp::renderOutputPanel()
 {
-   if (!ImGui::Begin("ST Output", nullptr, ImGuiWindowFlags_NoCollapse)) {
-      ImGui::End();
-      return;
-   }
 
    // --- the toolbar ------------------------------------------------------------
    //
@@ -6169,10 +6201,7 @@ void STApp::renderOutputPanel()
       ImGui::SetScrollHereY(1.0f);
    }
    ImGui::EndChild();
-
-   ImGui::End();
 }
-
 
 } // namespace ST
 } // namespace undoApp

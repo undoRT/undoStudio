@@ -1,5 +1,12 @@
-// Several files open at once, and none of them loses what was typed in it.
-//
+/**
+ * @file multi_file_tabs.cpp
+ * @brief Several files open at once, and none of them loses what was typed in it
+ * @author Salvatore Bamundo
+ * @date October 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // This is the whole feature end to end: open two files, edit both, switch between
 // them, and each comes back showing its own text. Opening a second file used to
 // close the first, so there was nothing to switch between.

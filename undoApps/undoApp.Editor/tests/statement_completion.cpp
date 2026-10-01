@@ -1,7 +1,12 @@
-// End-to-end check of the statement completion: typing the start of a statement
-// must offer the statements that start that way, and accepting one must write the
-// whole skeleton with the caret on the part still to be filled in.
-//
+/**
+ * @file statement_completion.cpp
+ * @brief End-to-end check of the statement completion: typing the start of a statement
+ * @author Salvatore Bamundo
+ * @date September 2026
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: Copyright (c) 2026 undoRT
+ */
+
 // The last third is where the list is allowed to open. Both of those cases were
 // wrong before they were tested: a fuzzy match took the list over the member
 // completion after "motore.re", and it hid an identifier that begins like a
@@ -19,6 +24,7 @@
 #define private public
 #include <TextEditor.h>
 #include "undoAppST.hpp"
+#include "st_editor_frame.hpp"
 #undef private
 
 using namespace undoApp::ST;
@@ -34,7 +40,7 @@ static void frame(STApp& app) {
   io.AddMousePosEvent(600.0f, 700.0f);
   ImGui::NewFrame();
   ImGui::SetNextWindowSize(ImVec2(1200, 800));
-  app.renderEditorPanel();
+  stEditorFrame(app);
   ImGui::EndFrame();
 }
 
@@ -50,7 +56,7 @@ static void frameWithBodyEditorFocused(STApp& app) {
   ImGui::NewFrame();
   io.WantTextInput = true;
   ImGui::SetNextWindowSize(ImVec2(1200, 800));
-  app.renderEditorPanel();
+  stEditorFrame(app);
   ImGui::EndFrame();
 }
 
